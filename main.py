@@ -185,7 +185,6 @@ def process_bulk_file(chat_id, file_content):
         send_message(chat_id, "⚠️ ফাইলটি খালি রয়েছে বা কোনো কার্ড পাওয়া যায়নি!")
         return
 
-    # Initial status message with loading timer placeholder
     msg_id = send_message_get_id(
         chat_id,
         f"⚡ **Zenmods Bulk Engine** ⚡\nTotal cards found: `{total_cards}`.\n🔄 Initializing sequential check..."
@@ -201,17 +200,15 @@ def process_bulk_file(chat_id, file_content):
     declined_count = 0
     error_count = 0
     
-    avg_time_per_card = 4  # estimated seconds per card
+    avg_time_per_card = 4
     start_time = time.time()
 
     for idx, card_line in enumerate(lines, 1):
-        # Calculate remaining time dynamically
         elapsed = time.time() - start_time
         avg_time = elapsed / idx if idx > 1 else avg_time_per_card
         remaining_cards = total_cards - idx + 1
         est_remaining_sec = int(avg_time * remaining_cards)
         
-        # Update progress and timer status
         progress_text = (
             f"⚡ **Zenmods Bulk Engine** ⚡\n"
             f"Progress: `[{idx}/{total_cards}]` ({int((idx/total_cards)*100)}%)\n"
@@ -221,12 +218,10 @@ def process_bulk_file(chat_id, file_content):
         if msg_id:
             edit_message(chat_id, msg_id, progress_text)
 
-        # Strictly check one by one and wait for final status report
         result = check_single_cc(card_line, session)
 
         if "Approved ✅" in result:
             approved_count += 1
-            # Stylish animated text & high-quality look for Zenmods approved card
             zenmods_animation = (
                 "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
                 "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
@@ -242,9 +237,8 @@ def process_bulk_file(chat_id, file_content):
         else:
             error_count += 1
 
-        time.sleep(1)  # Rate limit control between sequential checks
+        time.sleep(1)
 
-    # Final Report
     report = (
         f"📊 **ZENMODS BULK CHECK REPORT** 📊\n\n"
         f"Total Checked: `{total_cards}`\n"
@@ -274,19 +268,15 @@ def webhook():
                 authorized_users.add(chat_id)
                 send_message(
                     chat_id,
-                    "⚡ **Zenmods Checker** ⚡\nAccess Granted! ✅\nএখন তুমি বট ব্যবহার"
-                    " করতে পারবে।\nকার্ড চেক করতে `/check card|mm|yy|cvv` অথবা যেকোনো"
-                    " `.txt` ফাইল পাঠাও!",
+                    "⚡ **Zenmods Checker** ⚡\nAccess Granted! ✅\nএখন তুমি বট ব্যবহার করতে পারবে।\nকার্ড চেক করতে `/check card|mm|yy|cvv` অথবা যেকোনো `.txt` ফাইল পাঠাও!"
                 )
             else:
                 send_message(
                     chat_id,
-                    "🔒 **Zenmods Checker** 🔒\nAccess Denied! ❌\nএই বট ব্যবহার করতে"
-                    " হলে প্রথমে সঠিক সিক্রেট কোডটি দিন:",
+                    "🔒 **Zenmods Checker** 🔒\nAccess Denied! ❌\nএই বট ব্যবহার করতে হলে প্রথমে সঠিক সিক্রেট কোডটি দিন:"
                 )
             return "OK", 200
 
-        # Handle document / file upload (.txt)
         if "document" in update["message"]:
             doc = update["message"]["document"]
             file_name = doc.get("file_name", "")
@@ -300,7 +290,6 @@ def webhook():
                     download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
                     file_content = requests.get(download_url).content
 
-                    # Run bulk check sequentially in background thread
                     threading.Thread(
                         target=process_bulk_file, args=(chat_id, file_content)
                     ).start()
@@ -338,8 +327,7 @@ def webhook():
         elif text == "/start":
             send_message(
                 chat_id,
-                "⚡ **Zenmods Checker Bot** ⚡\nYou are already authorized! ✅\nSend"
-                " single card via `/check` or upload your `.txt` card list file.",
+                "⚡ **Zenmods Checker Bot** ⚡\nYou are already authorized! ✅\nSend single card via `/check` or upload your `.txt` card list file.",
             )
 
     return "OK", 200
