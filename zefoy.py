@@ -1,10 +1,34 @@
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 import requests
 import re
 import time
 import base64
 import json
 from urllib.parse import unquote
+
+
+def start_keepalive():
+    port = os.getenv("PORT")
+    if not port:
+        print("[*] No PORT env var, skipping keep-alive server")
+        return
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"zefoy running")
+        def do_HEAD(self):
+            self.send_response(200)
+            self.end_headers()
+        def log_message(self, format, *args):
+            pass
+    httpd = HTTPServer(("0.0.0.0", int(port)), Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    print(f"[*] Keep-alive server on port {port}")
 
 
 class Zefoy:
@@ -383,6 +407,7 @@ class Zefoy:
 
 
 if __name__ == "__main__":
+    start_keepalive()
     bot = Zefoy()
     if bot.service == "views":
         url = "https://zefoy.com/c2VuZC9mb2xeb3dlcnNfdGlrdG9V"
