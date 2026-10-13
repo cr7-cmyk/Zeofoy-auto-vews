@@ -9,7 +9,6 @@ import aiohttp
 from datetime import datetime
 from typing import Dict, List, Optional
 from curl_cffi import requests as cffi_requests
-from curl_compat import ChromeSession
 from dotenv import load_dotenv
 import math
 import numpy as np
@@ -25,7 +24,7 @@ load_dotenv()
 MAX_ATTEMPTS = 50
 CONCURRENT_BATCH_SIZE = 5
 BATCH_DELAY = 3
-BOT_TOKEN = "8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk"
+BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -618,13 +617,19 @@ class ConcurrentHitter:
             try:
                 proxy_data = await ProxyManager.get_random(self.user_id)
                 proxies = {"http": f"http://{proxy_data['username']}:{proxy_data['password']}@{proxy_data['server']}"} if proxy_data and proxy_data.get('username') else None
-                async with ChromeSession(impersonate="chrome124", proxies=proxies) as s:
-                    resp = await s.get(self.url, timeout=6)
-                    final_url = str(resp.url) if hasattr(resp, 'url') else self.url
-                    html = resp.text
-                    cs_token = StripeAPIExtractor.extract_cs_live(final_url, html)
-                    pk_key = StripeAPIExtractor.extract_pk_live(html)
-                    if cs_token and pk_key: return {'cs_token': cs_token, 'pk_key': pk_key}
+                
+                loop = asyncio.get_running_loop()
+                def _do_get():
+                    s = cffi_requests.Session(impersonate="chrome124")
+                    if proxies: s.proxies = proxies
+                    return s.get(self.url, timeout=6)
+                
+                resp = await loop.run_in_executor(None, _do_get)
+                final_url = str(resp.url) if hasattr(resp, 'url') else self.url
+                html = resp.text
+                cs_token = StripeAPIExtractor.extract_cs_live(final_url, html)
+                pk_key = StripeAPIExtractor.extract_pk_live(html)
+                if cs_token and pk_key: return {'cs_token': cs_token, 'pk_key': pk_key}
             except Exception:
                 continue
         return None
