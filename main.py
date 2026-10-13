@@ -37,7 +37,8 @@ USER_AGENTS = [
 def get_random_headers():
     return {
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "application/json, text/plain, */*"
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9"
     }
 
 def is_user_subscribed(user_id):
@@ -65,7 +66,7 @@ def send_subscription_prompt(chat_id):
 
 async def fetch_api(session, url, headers):
     try:
-        async with session.get(url, headers=headers, timeout=5) as response:
+        async with session.get(url, headers=headers, timeout=4) as response:
             if response.status == 200:
                 return await response.json()
     except:
@@ -74,10 +75,10 @@ async def fetch_api(session, url, headers):
 
 async def async_check_bin(bin_num):
     headers = get_random_headers()
+    # Updated reliable API list (removed dead bin-checker.net)
     urls = [
-        f"https://bin-checker.net/api/{bin_num}",
-        f"https://data.handyapi.com/bin/{bin_num}",
         f"https://lookup.binlist.net/{bin_num}",
+        f"https://data.handyapi.com/bin/{bin_num}",
         f"https://binlist.io/lookup/{bin_num}/",
         f"https://api.bincodes.com/bin/{bin_num}.json"
     ]
@@ -110,7 +111,7 @@ async def async_check_bin(bin_num):
 
 @app.route('/')
 def home():
-    return "Advanced Interactive Bot is running successfully!"
+    return "Advanced Interactive Bot with Live APIs is running!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -124,7 +125,7 @@ def send_welcome(message):
     
     welcome_text = (
         "🔥 *Welcome to Advanced Tool Bot* 🔥\n\n"
-        "You can use commands or click buttons below for interactive setup:\n"
+        "Use commands or click buttons below for interactive setup:\n"
         "• `/check <bin>` - Check bin info\n"
         "• `/hunt <prefix> <count> <country>` - Hunt valid bins\n"
         "• `/gen <bin> [mm] [yyyy] [cvv] [amount]` - Generate cards"
@@ -145,7 +146,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nPlease send the **BIN Prefix** (e.g., `37` or `4751`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Advanced Hunt Setup*\n\nPlease send the **BIN Prefix** (e.g., `4751` or `5496`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -171,28 +172,37 @@ def handle_interactive_steps(message):
     if action == "hunt_prefix":
         state["prefix"] = text
         state["action"] = "hunt_count"
-        bot.reply_to(message, "🔢 Now send how many bins you want to test (e.g., `10` or `20`):", parse_mode="Markdown")
+        bot.reply_to(message, "🔢 Now send how many bins you want to scan (e.g., `15` or `25`):", parse_mode="Markdown")
         
     elif action == "hunt_count":
         if not text.isdigit():
-            bot.reply_to(message, "⚠️ Please enter a valid number for count.")
+            bot.reply_to(message, "⚠️ Please enter a valid number.")
             return
         state["count"] = int(text)
         state["action"] = "hunt_country"
-        bot.reply_to(message, "🌍 Now send the **Country Code** (e.g., `US`, `BD`) or type `all` for any country:", parse_mode="Markdown")
+        bot.reply_to(message, "🌍 Send **Country Code** (e.g., `US`, `GB`, `BD`) or type `all`:", parse_mode="Markdown")
         
     elif action == "hunt_country":
         prefix = state.get("prefix")
         count = state.get("count")
         country = None if text.lower() == "all" else text.upper()
         
-        del USER_STATES[user_id] # Clear state
+        del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Hunting {count} bins with prefix {prefix}... [░░░░░░░░░░] 0%*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Scanning & Hunting bins with prefix {prefix}... Please wait.*", parse_mode="Markdown")
         
-        chars = '0987654321'
-        length = 4 if prefix != '574' else 3
-        generated_bins = [prefix + ''.join(random.choice(chars) for _ in range(length)) for _ in range(count)]
+        chars = '0123456789'
+        req_len = 16 if not prefix.startswith("3") else 15
+        rem_len = req_len - len(prefix) - len(prefix) # generating intermediate randomized chunks
+        
+        # Advanced generation pool to increase validity chances
+        generated_bins = []
+        for _ in range(count * 2): # generate extra to filter better
+            rand_part = "".join(random.choice(chars) for _ in range(6 - len(prefix)))
+            b = prefix + rand_part
+            if len(b) >= 6:
+                generated_bins.append(b[:6])
+        generated_bins = list(set(generated_bins))[:count]
         
         async def run_batch():
             async with aiohttp.ClientSession() as session:
@@ -215,10 +225,10 @@ def handle_interactive_steps(message):
             with open(filename, "w") as f:
                 f.write("\n".join(valid_records))
             with open(filename, "rb") as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ *Hunt complete! Found {len(valid_records)} valid bins.*", parse_mode="Markdown")
+                bot.send_document(message.chat.id, f, caption=f"✅ *Hunt successful! Found {len(valid_records)} valid bins.*", parse_mode="Markdown")
             os.remove(filename)
         else:
-            bot.send_message(message.chat.id, "❌ *No valid bins found matching criteria in this batch.*", parse_mode="Markdown")
+            bot.send_message(message.chat.id, "❌ *No valid live bins found in this batch. Try another prefix (e.g., 4751, 5496, 4000)!*", parse_mode="Markdown")
         bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
 
     # --- GENERATOR FLOW ---
@@ -229,17 +239,15 @@ def handle_interactive_steps(message):
         
     elif action == "gen_amount":
         if not text.isdigit():
-            bot.reply_to(message, "⚠️ Please enter a valid number for amount.")
+            bot.reply_to(message, "⚠️ Please enter a valid number.")
             return
         
         bin_input = state.get("bin")
         amount = int(text)
         del USER_STATES[user_id]
         
-        animation_msg = bot.reply_to(message, "⚡ *Generating cards... [▒▒▒▒▒▒▒▒▒▒] 0%*", parse_mode="Markdown")
-        time.sleep(0.5)
-        bot.edit_message_text("⚡ *Generating cards... [█████▒▒▒▒▒] 50%*", chat_id=message.chat.id, message_id=animation_msg.message_id, parse_mode="Markdown")
-        time.sleep(0.5)
+        animation_msg = bot.reply_to(message, "⚡ *Generating cards...*", parse_mode="Markdown")
+        time.sleep(0.4)
         
         generated_list = []
         target_len = 16 if not bin_input.startswith("3") else 15
@@ -266,7 +274,7 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Checking bin details via live APIs...*", parse_mode="Markdown")
         
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -330,10 +338,8 @@ def generate_cards(message):
         cvv = parts[4] if len(parts) > 4 and parts[4].isdigit() else None
         amount = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else 10
         
-        animation_msg = bot.reply_to(message, "⚡ *Generating cards... [▒▒▒▒▒▒▒▒▒▒] 0%*", parse_mode="Markdown")
-        time.sleep(0.5)
-        bot.edit_message_text("⚡ *Generating cards... [█████▒▒▒▒▒] 50%*", chat_id=message.chat.id, message_id=animation_msg.message_id, parse_mode="Markdown")
-        time.sleep(0.5)
+        animation_msg = bot.reply_to(message, "⚡ *Generating cards...*", parse_mode="Markdown")
+        time.sleep(0.4)
         
         generated_list = []
         target_len = 16 if not bin_input.startswith("3") else 15
@@ -363,14 +369,20 @@ def hunt_bins_command(message):
         return
     try:
         parts = message.text.split()
-        prefix = parts[1] if len(parts) > 1 else "37"
+        prefix = parts[1] if len(parts) > 1 else "4751"
         count = int(parts[2]) if len(parts) > 2 else 10
         target_country = parts[3].upper() if len(parts) > 3 else None
         
-        msg = bot.reply_to(message, f"⚡ *Hunting {count} bins with prefix {prefix}... [░░░░░░░░░░] 0%*", parse_mode="Markdown")
-        chars = '0987654321'
-        length = 4 if prefix != '574' else 3
-        generated_bins = [prefix + ''.join(random.choice(chars) for _ in range(length)) for _ in range(count)]
+        msg = bot.reply_to(message, f"⚡ *Hunting valid bins with prefix {prefix}...*", parse_mode="Markdown")
+        chars = '0123456789'
+        
+        generated_bins = []
+        for _ in range(count * 2):
+            rand_part = "".join(random.choice(chars) for _ in range(6 - len(prefix)))
+            b = prefix + rand_part
+            if len(b) >= 6:
+                generated_bins.append(b[:6])
+        generated_bins = list(set(generated_bins))[:count]
         
         async def run_batch():
             async with aiohttp.ClientSession() as session:
@@ -396,7 +408,7 @@ def hunt_bins_command(message):
                 bot.send_document(message.chat.id, f, caption=f"✅ *Hunt complete! Found {len(valid_records)} valid bins.*", parse_mode="Markdown")
             os.remove(filename)
         else:
-            bot.send_message(message.chat.id, "❌ *No valid bins found matching criteria in this batch.*", parse_mode="Markdown")
+            bot.send_message(message.chat.id, "❌ *No valid live bins found matching criteria. Try prefix like 4751 or 5496.*", parse_mode="Markdown")
         bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
     except Exception as e:
         bot.send_message(message.chat.id, f"Error during hunt: {str(e)}")
