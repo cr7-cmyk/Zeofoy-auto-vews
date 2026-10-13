@@ -23,6 +23,9 @@ CHANNEL_USERNAME = "@ZenmodsXads"  # Target Channel for Force Subscribe
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
+# Temporary user states for interactive input flow
+USER_STATES = {}
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
@@ -107,7 +110,7 @@ async def async_check_bin(bin_num):
 
 @app.route('/')
 def home():
-    return "Force-Sub Integrated Bot is running!"
+    return "Advanced Interactive Bot is running successfully!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -116,46 +119,152 @@ def send_welcome(message):
         return
 
     markup = InlineKeyboardMarkup()
-    markup.row(InlineKeyboardButton("⚡ Hunt Bins", callback_data="help_hunt"), InlineKeyboardButton("💳 Generate Cards", callback_data="help_gen"))
-    markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="help_check"))
+    markup.row(InlineKeyboardButton("⚡ Hunt Bins", callback_data="btn_hunt"), InlineKeyboardButton("💳 Generate Cards", callback_data="btn_gen"))
+    markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
         "🔥 *Welcome to Advanced Tool Bot* 🔥\n\n"
-        "Commands:\n"
-        "• `/check <bin>` - Check a specific bin info\n"
-        "• `/hunt <prefix> <count> <country>` - Hunt valid bins with file export\n"
-        "• `/gen <bin> [month] [year] [cvv] [amount]` - Generate cards"
+        "You can use commands or click buttons below for interactive setup:\n"
+        "• `/check <bin>` - Check bin info\n"
+        "• `/hunt <prefix> <count> <country>` - Hunt valid bins\n"
+        "• `/gen <bin> [mm] [yyyy] [cvv] [amount]` - Generate cards"
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
+    user_id = call.from_user.id
     if call.data == "verify_sub":
-        if is_user_subscribed(call.from_user.id):
+        if is_user_subscribed(user_id):
             bot.answer_callback_query(call.id, "✅ Verification Successful!")
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
             send_welcome(call.message)
         else:
             bot.answer_callback_query(call.id, "❌ You haven't joined the channel yet!", show_alert=True)
-    elif call.data == "help_hunt":
-        bot.answer_callback_query(call.id, "Use /hunt <prefix> <count> (e.g. /hunt 37 10 US)")
-    elif call.data == "help_gen":
-        bot.answer_callback_query(call.id, "Use /gen <bin> [mm] [yyyy] [cvv] [amount]")
-    elif call.data == "help_check":
-        bot.answer_callback_query(call.id, "Use /check <bin> (e.g. /check 475126)")
+            
+    elif call.data == "btn_hunt":
+        USER_STATES[user_id] = {"action": "hunt_prefix"}
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nPlease send the **BIN Prefix** (e.g., `37` or `4751`):", parse_mode="Markdown")
+        
+    elif call.data == "btn_gen":
+        USER_STATES[user_id] = {"action": "gen_bin"}
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "📥 *Card Generator Setup*\n\nPlease send the **BIN number** (e.g., `475126`):", parse_mode="Markdown")
+        
+    elif call.data == "btn_check":
+        USER_STATES[user_id] = {"action": "check_bin"}
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "📥 *Bin Checker Setup*\n\nPlease send the **BIN** you want to check:", parse_mode="Markdown")
 
-@bot.message_handler(commands=['check'])
-def check_single_bin(message):
-    if not is_user_subscribed(message.from_user.id):
-        send_subscription_prompt(message.chat.id)
+@bot.message_handler(func=lambda message: message.from_user.id in USER_STATES)
+def handle_interactive_steps(message):
+    user_id = message.from_user.id
+    state = USER_STATES.get(user_id)
+    if not state:
         return
-
-    try:
-        parts = message.text.split()
-        if len(parts) < 2:
-            bot.reply_to(message, "Usage: `/check 475126`", parse_mode="Markdown")
+    
+    action = state.get("action")
+    text = message.text.strip()
+    
+    # --- HUNT FLOW ---
+    if action == "hunt_prefix":
+        state["prefix"] = text
+        state["action"] = "hunt_count"
+        bot.reply_to(message, "🔢 Now send how many bins you want to test (e.g., `10` or `20`):", parse_mode="Markdown")
+        
+    elif action == "hunt_count":
+        if not text.isdigit():
+            bot.reply_to(message, "⚠️ Please enter a valid number for count.")
             return
-        bin_num = parts[1]
+        state["count"] = int(text)
+        state["action"] = "hunt_country"
+        bot.reply_to(message, "🌍 Now send the **Country Code** (e.g., `US`, `BD`) or type `all` for any country:", parse_mode="Markdown")
+        
+    elif action == "hunt_country":
+        prefix = state.get("prefix")
+        count = state.get("count")
+        country = None if text.lower() == "all" else text.upper()
+        
+        del USER_STATES[user_id] # Clear state
+        
+        msg = bot.reply_to(message, f"⚡ *Hunting {count} bins with prefix {prefix}... [░░░░░░░░░░] 0%*", parse_mode="Markdown")
+        
+        chars = '0987654321'
+        length = 4 if prefix != '574' else 3
+        generated_bins = [prefix + ''.join(random.choice(chars) for _ in range(length)) for _ in range(count)]
+        
+        async def run_batch():
+            async with aiohttp.ClientSession() as session:
+                tasks = [async_check_bin(b) for b in generated_bins]
+                return await asyncio.gather(*tasks)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        all_results = loop.run_until_complete(run_batch())
+        
+        valid_records = []
+        for res in all_results:
+            if res:
+                if country and res['country_code'].upper() != country:
+                    continue
+                valid_records.append(f"Bin: {res['bin']} | Scheme: {res['scheme']} | Country: {res['country_code']} ({res['country_name']}) | Bank: {res['bank']}")
+                
+        if valid_records:
+            filename = f"valid_bins_{user_id}.txt"
+            with open(filename, "w") as f:
+                f.write("\n".join(valid_records))
+            with open(filename, "rb") as f:
+                bot.send_document(message.chat.id, f, caption=f"✅ *Hunt complete! Found {len(valid_records)} valid bins.*", parse_mode="Markdown")
+            os.remove(filename)
+        else:
+            bot.send_message(message.chat.id, "❌ *No valid bins found matching criteria in this batch.*", parse_mode="Markdown")
+        bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
+
+    # --- GENERATOR FLOW ---
+    elif action == "gen_bin":
+        state["bin"] = text
+        state["action"] = "gen_amount"
+        bot.reply_to(message, "💳 How many cards do you want to generate? (e.g., `10`, `20`):", parse_mode="Markdown")
+        
+    elif action == "gen_amount":
+        if not text.isdigit():
+            bot.reply_to(message, "⚠️ Please enter a valid number for amount.")
+            return
+        
+        bin_input = state.get("bin")
+        amount = int(text)
+        del USER_STATES[user_id]
+        
+        animation_msg = bot.reply_to(message, "⚡ *Generating cards... [▒▒▒▒▒▒▒▒▒▒] 0%*", parse_mode="Markdown")
+        time.sleep(0.5)
+        bot.edit_message_text("⚡ *Generating cards... [█████▒▒▒▒▒] 50%*", chat_id=message.chat.id, message_id=animation_msg.message_id, parse_mode="Markdown")
+        time.sleep(0.5)
+        
+        generated_list = []
+        target_len = 16 if not bin_input.startswith("3") else 15
+        rem_len = target_len - len(bin_input)
+        
+        for _ in range(amount):
+            rand_digits = "".join([str(random.randint(0, 9)) for _ in range(rem_len)])
+            card_num = bin_input + rand_digits
+            c_month = str(random.randint(1, 12)).zfill(2)
+            c_year = str(random.randint(2027, 2032))
+            c_cvv = str(random.randint(100, 9999)) if bin_input.startswith("3") else str(random.randint(100, 999))
+            generated_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
+            
+        filename = f"generated_{user_id}.txt"
+        with open(filename, "w") as f:
+            f.write("\n".join(generated_list))
+        with open(filename, "rb") as f:
+            bot.send_document(message.chat.id, f, caption=f"✅ *Successfully generated {amount} cards!*", parse_mode="Markdown")
+        os.remove(filename)
+        bot.delete_message(chat_id=message.chat.id, message_id=animation_msg.message_id)
+
+    # --- CHECKER FLOW ---
+    elif action == "check_bin":
+        bin_num = text
+        del USER_STATES[user_id]
         
         msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
         
@@ -163,6 +272,34 @@ def check_single_bin(message):
         asyncio.set_event_loop(loop)
         res = loop.run_until_complete(async_check_bin(bin_num))
         
+        if res:
+            out = (f"✅ *Bin Info Found*\n"
+                   f"━━━━━━━━━━━━━━━━━━━\n"
+                   f"📌 *Bin:* `{res['bin']}`\n"
+                   f"💳 *Scheme:* `{res['scheme']}`\n"
+                   f"🌍 *Country:* `{res['country_code']}` ({res['country_name']})\n"
+                   f"🏛 *Bank:* `{res['bank']}`\n"
+                   f"━━━━━━━━━━━━━━━━━━━")
+            bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+        else:
+            bot.edit_message_text(f"❌ *Invalid or dead bin:* `{bin_num}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+
+# Direct Command Handlers
+@bot.message_handler(commands=['check'])
+def check_single_bin(message):
+    if not is_user_subscribed(message.from_user.id):
+        send_subscription_prompt(message.chat.id)
+        return
+    try:
+        parts = message.text.split()
+        if len(parts) < 2:
+            bot.reply_to(message, "Usage: `/check 475126`", parse_mode="Markdown")
+            return
+        bin_num = parts[1]
+        msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        res = loop.run_until_complete(async_check_bin(bin_num))
         if res:
             out = (f"✅ *Bin Info Found*\n"
                    f"━━━━━━━━━━━━━━━━━━━\n"
@@ -182,13 +319,11 @@ def generate_cards(message):
     if not is_user_subscribed(message.from_user.id):
         send_subscription_prompt(message.chat.id)
         return
-
     try:
         parts = message.text.split()
         if len(parts) < 2:
             bot.reply_to(message, "Usage: `/gen <bin> [month] [year] [cvv] [amount]`\nExample: `/gen 475126 12 2028 456 10`", parse_mode="Markdown")
             return
-        
         bin_input = parts[1]
         month = parts[2] if len(parts) > 2 and parts[2].isdigit() else None
         year = parts[3] if len(parts) > 3 and parts[3].isdigit() else None
@@ -203,28 +338,19 @@ def generate_cards(message):
         generated_list = []
         target_len = 16 if not bin_input.startswith("3") else 15
         rem_len = target_len - len(bin_input)
-        
         for _ in range(amount):
             rand_digits = "".join([str(random.randint(0, 9)) for _ in range(rem_len)])
             card_num = bin_input + rand_digits
-            
             c_month = month if month else str(random.randint(1, 12)).zfill(2)
             c_year = year if year else str(random.randint(2027, 2032))
-            
-            if bin_input.startswith("3"):
-                c_cvv = cvv if cvv else str(random.randint(100, 9999))
-            else:
-                c_cvv = cvv if cvv else str(random.randint(100, 999))
-                
+            c_cvv = cvv if cvv else (str(random.randint(100, 9999)) if bin_input.startswith("3") else str(random.randint(100, 999)))
             generated_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
             
         filename = f"generated_{message.from_user.id}.txt"
         with open(filename, "w") as f:
             f.write("\n".join(generated_list))
-            
         with open(filename, "rb") as f:
             bot.send_document(message.chat.id, f, caption=f"✅ *Successfully generated {amount} cards!*", parse_mode="Markdown")
-            
         os.remove(filename)
         bot.delete_message(chat_id=message.chat.id, message_id=animation_msg.message_id)
     except Exception as e:
@@ -235,7 +361,6 @@ def hunt_bins_command(message):
     if not is_user_subscribed(message.from_user.id):
         send_subscription_prompt(message.chat.id)
         return
-
     try:
         parts = message.text.split()
         prefix = parts[1] if len(parts) > 1 else "37"
@@ -243,10 +368,8 @@ def hunt_bins_command(message):
         target_country = parts[3].upper() if len(parts) > 3 else None
         
         msg = bot.reply_to(message, f"⚡ *Hunting {count} bins with prefix {prefix}... [░░░░░░░░░░] 0%*", parse_mode="Markdown")
-        
         chars = '0987654321'
         length = 4 if prefix != '574' else 3
-        
         generated_bins = [prefix + ''.join(random.choice(chars) for _ in range(length)) for _ in range(count)]
         
         async def run_batch():
@@ -269,13 +392,11 @@ def hunt_bins_command(message):
             filename = f"valid_bins_{message.from_user.id}.txt"
             with open(filename, "w") as f:
                 f.write("\n".join(valid_records))
-                
             with open(filename, "rb") as f:
                 bot.send_document(message.chat.id, f, caption=f"✅ *Hunt complete! Found {len(valid_records)} valid bins.*", parse_mode="Markdown")
             os.remove(filename)
         else:
             bot.send_message(message.chat.id, "❌ *No valid bins found matching criteria in this batch.*", parse_mode="Markdown")
-            
         bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
     except Exception as e:
         bot.send_message(message.chat.id, f"Error during hunt: {str(e)}")
