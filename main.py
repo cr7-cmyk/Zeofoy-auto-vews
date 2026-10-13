@@ -1,13 +1,7 @@
 import os
 import random
 import threading
-import asyncio
 import time
-try:
-    import aiohttp
-except ImportError:
-    aiohttp_available = False
-
 import requests
 from flask import Flask
 import telebot
@@ -25,17 +19,29 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0"
-]
-
-def get_random_headers():
-    return {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "application/json, text/plain, */*"
-    }
+def generate_fresh_user_agent():
+    """Dynamically generates a fresh and randomized User-Agent string."""
+    browsers = ["Chrome", "Firefox", "Safari", "Edge"]
+    os_platforms = [
+        ("Windows NT 10.0; Win64; x64", "AppleWebKit/537.36 (KHTML, like Gecko)"),
+        ("Macintosh; Intel Mac OS X 10_15_7", "AppleWebKit/605.1.15 (KHTML, like Gecko)"),
+        ("X11; Linux x86_64", "Gecko/20100101"),
+        ("Windows NT 10.0; Win64; x64", "Chrome/122.0.0.0 Safari/537.36")
+    ]
+    browser = random.choice(browsers)
+    os_p, engine = random.choice(os_platforms)
+    ver_major = random.randint(115, 125)
+    ver_minor = random.randint(0, 9)
+    build = random.randint(1000, 9999)
+    
+    if browser == "Chrome":
+        return f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36"
+    elif browser == "Firefox":
+        return f"Mozilla/5.0 ({os_p}; rv:{ver_major}.0) Gecko/20100101 Firefox/{ver_major}.0"
+    elif browser == "Safari":
+        return f"Mozilla/5.0 ({os_p}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.{random.randint(0,5)} Safari/605.1.15"
+    else:
+        return f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36 Edg/{ver_major}.0.{build}.{ver_minor}"
 
 def is_user_subscribed(user_id):
     try:
@@ -60,47 +66,55 @@ def send_subscription_prompt(chat_id):
     )
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
-async def async_check_bin(bin_num):
-    headers = get_random_headers()
+def check_single_bin_sync(bin_num, custom_ua):
+    headers = {
+        "User-Agent": custom_ua,
+        "Accept": "application/json, text/plain, */*"
+    }
     urls = [
         f"https://lookup.binlist.net/{bin_num}",
         f"https://data.handyapi.com/bin/{bin_num}"
     ]
     
-    async with aiohttp.ClientSession() as session:
-        for url in urls:
-            try:
-                async with session.get(url, headers=headers, timeout=4) as response:
-                    if response.status == 200:
-                        res = await response.json()
-                        if res and isinstance(res, dict):
-                            scheme = res.get('scheme') or res.get('Scheme') or res.get('card', {}).get('scheme') or 'Unknown'
-                            bank_info = res.get('bank', {})
-                            bank_name = bank_info.get('name') if isinstance(bank_info, dict) else res.get('Bank', 'Unknown')
-                            
-                            country_info = res.get('country', {})
-                            if isinstance(country_info, dict):
-                                cou_code = country_info.get('code') or country_info.get('Alpha2') or 'Unknown'
-                                cou_name = country_info.get('name') or country_info.get('Name') or 'Unknown'
-                            else:
-                                cou_code = res.get('Country', 'Unknown')
-                                cou_name = res.get('CountryName', 'Unknown')
-                            
-                            if scheme != 'Unknown' or bank_name != 'Unknown':
-                                return {
-                                    "bin": bin_num,
-                                    "scheme": scheme,
-                                    "bank": bank_name,
-                                    "country_code": cou_code,
-                                    "country_name": cou_name
-                                }
-            except:
-                pass
-    return None
+    for url in urls:
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                res = response.json()
+                if res and isinstance(res, dict):
+                    scheme = res.get('scheme') or res.get('Scheme') or res.get('card', {}).get('scheme') or 'Unknown'
+                    bank_info = res.get('bank', {})
+                    bank_name = bank_info.get('name') if isinstance(bank_info, dict) else res.get('Bank', 'Unknown')
+                    
+                    country_info = res.get('country', {})
+                    if isinstance(country_info, dict):
+                        cou_code = country_info.get('code') or country_info.get('Alpha2') or 'Unknown'
+                        cou_name = country_info.get('name') or country_info.get('Name') or 'Unknown'
+                    else:
+                        cou_code = res.get('Country', 'Unknown')
+                        cou_name = res.get('CountryName', 'Unknown')
+                    
+                    if scheme != 'Unknown' or bank_name != 'Unknown':
+                        return {
+                            "status": "VALID",
+                            "bin": bin_num,
+                            "scheme": scheme,
+                            "bank": bank_name,
+                            "country_code": cou_code,
+                            "country_name": cou_name
+                        }
+            elif response.status_code == 429:
+                return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
+        except requests.exceptions.Timeout:
+            return {"status": "TIMEOUT", "bin": bin_num, "reason": "Request Timeout"}
+        except Exception as e:
+            pass
+            
+    return {"status": "DEAD", "bin": bin_num, "reason": "Not found in API database"}
 
 @app.route('/')
 def home():
-    return "Advanced Bin Hunter Bot is running!"
+    return "Rotating User-Agent Bin Hunter Bot is running!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -135,7 +149,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `37`, `47`, `574`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Rotating UA Hunt Setup*\n\nSend **BIN Prefix** (e.g., `37`, `47`, `574`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -160,7 +174,7 @@ def handle_interactive_steps(message):
     if action == "hunt_prefix":
         state["prefix"] = text
         state["action"] = "hunt_count"
-        bot.reply_to(message, "🔢 Send how many bins to scan (e.g., `10`, `20`):", parse_mode="Markdown")
+        bot.reply_to(message, "🔢 Send how many bins to scan (e.g., `15`, `30`):", parse_mode="Markdown")
         
     elif action == "hunt_count":
         if not text.isdigit():
@@ -177,44 +191,72 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Hunting bins with prefix {prefix}... Please wait.*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with automatic User-Agent rotation every 3 checks. Please wait...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
         
         generated_bins = []
-        for _ in range(count * 3):
+        for _ in range(count * 2):
             us = "".join(random.choice(chars) for _ in range(length))
             u1 = prefix + us
             if len(u1) >= 6:
                 generated_bins.append(u1[:6])
         generated_bins = list(set(generated_bins))[:count]
         
-        async def run_batch():
-            async with aiohttp.ClientSession() as session:
-                tasks = [async_check_bin(b) for b in generated_bins]
-                return await asyncio.gather(*tasks)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        all_results = loop.run_until_complete(run_batch())
-        
         valid_records = []
-        for res in all_results:
-            if res:
-                if country and res['country_code'].upper() != country:
-                    continue
-                valid_records.append(f"Bin: {res['bin']} | Scheme: {res['scheme']} | Country: {res['country_code']} ({res['country_name']}) | Bank: {res['bank']}")
+        report_lines = [
+            f"=== ROTATING USER-AGENT BIN HUNT REPORT ===",
+            f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
+        ]
+        
+        # Initialize first fresh User-Agent
+        current_ua = generate_fresh_user_agent()
+        report_lines.append(f"[UA-ROTATION] Initial fresh User-Agent: {current_ua}\n")
+        
+        for idx, b in enumerate(generated_bins, 1):
+            # Rotate User-Agent every 3 bins
+            if (idx - 1) % 3 == 0 and idx > 1:
+                current_ua = generate_fresh_user_agent()
+                report_lines.append(f"\n[UA-ROTATION] Generated a fresh new User-Agent at bin {idx}: {current_ua}\n")
+            
+            result = check_single_bin_sync(b, current_ua)
+            status = result["status"]
+            
+            if status == "VALID":
+                cou_code = result['country_code']
+                if country and cou_code.upper() != country:
+                    report_lines.append(f"[{idx}] BIN: {b} -> SUCCESS but Skipped (Country mismatch: {cou_code})")
+                else:
+                    valid_records.append(f"Bin: {result['bin']} | Scheme: {result['scheme']} | Country: {cou_code} ({result['country_name']}) | Bank: {result['bank']}")
+                    report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {cou_code}, {result['bank']})")
+            elif status == "RATE_LIMITED":
+                report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (API Rate Limited - 429)")
+                time.sleep(2) # Extra delay if limited
+            elif status == "TIMEOUT":
+                report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Request Timeout)")
+            else:
+                report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ (Not found in database)")
                 
+            time.sleep(0.5) # Natural delay between checks
+            
+        # Write report file
+        report_filename = f"hunt_report_{user_id}.txt"
+        with open(report_filename, "w", encoding="utf-8") as f:
+            f.write("\n".join(report_lines))
+            
+        with open(report_filename, "rb") as f:
+            bot.send_document(message.chat.id, f, caption=f"📊 *Rotating UA Hunt Report*\nFound {len(valid_records)} valid bins out of {len(generated_bins)} scanned.", parse_mode="Markdown")
+            
         if valid_records:
-            filename = f"valid_bins_{user_id}.txt"
-            with open(filename, "w") as f:
+            valid_filename = f"valid_bins_{user_id}.txt"
+            with open(valid_filename, "w", encoding="utf-8") as f:
                 f.write("\n".join(valid_records))
-            with open(filename, "rb") as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ *Hunt complete! Found {len(valid_records)} valid bins.*", parse_mode="Markdown")
-            os.remove(filename)
-        else:
-            bot.send_message(message.chat.id, "❌ *No valid live bins found in this batch. Try prefix like 37, 47, or 574.*", parse_mode="Markdown")
+            with open(valid_filename, "rb") as f:
+                bot.send_document(message.chat.id, f, caption=f"✅ *Valid Bins List*", parse_mode="Markdown")
+            os.remove(valid_filename)
+            
+        os.remove(report_filename)
         bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
 
     elif action == "gen_bin":
@@ -244,7 +286,7 @@ def handle_interactive_steps(message):
             generated_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
             
         filename = f"generated_{user_id}.txt"
-        with open(filename, "w") as f:
+        with open(filename, "w", encoding="utf-8") as f:
             f.write("\n".join(generated_list))
         with open(filename, "rb") as f:
             bot.send_document(message.chat.id, f, caption=f"✅ *Successfully generated {amount} cards!*", parse_mode="Markdown")
@@ -254,12 +296,11 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        res = loop.run_until_complete(async_check_bin(bin_num))
+        msg = bot.reply_to(message, "⏳ *Checking bin details with fresh UA...*", parse_mode="Markdown")
+        fresh_ua = generate_fresh_user_agent()
+        res = check_single_bin_sync(bin_num, fresh_ua)
         
-        if res:
+        if res["status"] == "VALID":
             out = (f"✅ *Bin Info Found*\n"
                    f"━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 *Bin:* `{res['bin']}`\n"
@@ -269,7 +310,7 @@ def handle_interactive_steps(message):
                    f"━━━━━━━━━━━━━━━━━━━")
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         else:
-            bot.edit_message_text(f"❌ *Invalid or dead bin:* `{bin_num}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Invalid or dead bin:* `{bin_num}` (Reason: {res.get('reason', 'Dead')})", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['check'])
 def check_single_bin(message):
@@ -283,10 +324,9 @@ def check_single_bin(message):
             return
         bin_num = parts[1]
         msg = bot.reply_to(message, "⏳ *Checking...*", parse_mode="Markdown")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        res = loop.run_until_complete(async_check_bin(bin_num))
-        if res:
+        fresh_ua = generate_fresh_user_agent()
+        res = check_single_bin_sync(bin_num, fresh_ua)
+        if res["status"] == "VALID":
             out = f"✅ Bin: {res['bin']} | Scheme: {res['scheme']} | Country: {res['country_code']} | Bank: {res['bank']}"
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id)
         else:
