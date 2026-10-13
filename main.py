@@ -114,7 +114,7 @@ def check_single_bin_sync(bin_num, custom_ua):
 
 @app.route('/')
 def home():
-    return "Rotating User-Agent Bin Hunter Bot is running!"
+    return "Live Counter Bin Hunter Bot is running!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -149,7 +149,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Rotating UA Hunt Setup*\n\nSend **BIN Prefix** (e.g., `37`, `47`, `574`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Live Hunt Setup*\n\nSend **BIN Prefix** (e.g., `37`, `47`, `574`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -174,7 +174,7 @@ def handle_interactive_steps(message):
     if action == "hunt_prefix":
         state["prefix"] = text
         state["action"] = "hunt_count"
-        bot.reply_to(message, "🔢 Send how many bins to scan (e.g., `15`, `30`):", parse_mode="Markdown")
+        bot.reply_to(message, "🔢 Send how many bins to scan (e.g., `20`, `50`, `100`):", parse_mode="Markdown")
         
     elif action == "hunt_count":
         if not text.isdigit():
@@ -191,7 +191,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with automatic User-Agent rotation every 3 checks. Please wait...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Initializing Live Hunt for {count} bins...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -206,19 +206,33 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== ROTATING USER-AGENT BIN HUNT REPORT ===",
+            f"=== LIVE COUNT BIN HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
-        # Initialize first fresh User-Agent
         current_ua = generate_fresh_user_agent()
         report_lines.append(f"[UA-ROTATION] Initial fresh User-Agent: {current_ua}\n")
+        
+        total_bins = len(generated_bins)
         
         for idx, b in enumerate(generated_bins, 1):
             # Rotate User-Agent every 3 bins
             if (idx - 1) % 3 == 0 and idx > 1:
                 current_ua = generate_fresh_user_agent()
-                report_lines.append(f"\n[UA-ROTATION] Generated a fresh new User-Agent at bin {idx}: {current_ua}\n")
+                
+            # Live Progress Update on Telegram Message
+            try:
+                progress_text = (
+                    f"⚡ *Live Hunting in Progress...*\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 Checked: `{idx}/{total_bins}`\n"
+                    f"✅ Valid Found: `{len(valid_records)}`\n"
+                    f"🔍 Current BIN: `{b}`\n"
+                    f"━━━━━━━━━━━━━━━━━━━"
+                )
+                bot.edit_message_text(progress_text, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            except Exception:
+                pass # Avoid hitting Telegram rate limits on message edits
             
             result = check_single_bin_sync(b, current_ua)
             status = result["status"]
@@ -232,13 +246,13 @@ def handle_interactive_steps(message):
                     report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {cou_code}, {result['bank']})")
             elif status == "RATE_LIMITED":
                 report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (API Rate Limited - 429)")
-                time.sleep(2) # Extra delay if limited
+                time.sleep(1.5)
             elif status == "TIMEOUT":
                 report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Request Timeout)")
             else:
                 report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ (Not found in database)")
                 
-            time.sleep(0.5) # Natural delay between checks
+            time.sleep(0.4)
             
         # Write report file
         report_filename = f"hunt_report_{user_id}.txt"
@@ -246,7 +260,7 @@ def handle_interactive_steps(message):
             f.write("\n".join(report_lines))
             
         with open(report_filename, "rb") as f:
-            bot.send_document(message.chat.id, f, caption=f"📊 *Rotating UA Hunt Report*\nFound {len(valid_records)} valid bins out of {len(generated_bins)} scanned.", parse_mode="Markdown")
+            bot.send_document(message.chat.id, f, caption=f"📊 *Live Hunt Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", parse_mode="Markdown")
             
         if valid_records:
             valid_filename = f"valid_bins_{user_id}.txt"
@@ -296,7 +310,7 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Checking bin details with fresh UA...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
         fresh_ua = generate_fresh_user_agent()
         res = check_single_bin_sync(bin_num, fresh_ua)
         
