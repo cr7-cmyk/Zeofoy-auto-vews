@@ -1,4 +1,3 @@
-requests
-beautifulsoup4
-pyTelegramBotAPI
-names
+pyTelegramBotAPI==4.37.0
+curl_cffi==0.7.4
+requests==2.34.2
