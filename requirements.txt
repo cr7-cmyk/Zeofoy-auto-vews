@@ -1,7 +1,4 @@
-aiogram
-curl_cffi
-aiohttp
-scipy
-numpy
-python-dotenv
+flask
 requests
+pyTelegramBotAPI
+aiohttp
