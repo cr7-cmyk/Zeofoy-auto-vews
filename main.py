@@ -281,6 +281,7 @@ def hunt_bins_command(message):
         bot.send_message(message.chat.id, f"Error during hunt: {str(e)}")
 
 def run_bot():
+    bot.remove_webhook()
     bot.infinity_polling()
 
 if __name__ == '__main__':
