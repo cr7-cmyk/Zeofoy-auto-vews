@@ -67,54 +67,54 @@ def send_subscription_prompt(chat_id):
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
 def check_single_bin_sync(bin_num, custom_ua):
+    # Official Binlist API specification with Accept-Version: 3 header[cite: 1]
     headers = {
         "User-Agent": custom_ua,
-        "Accept": "application/json, text/plain, */*"
+        "Accept-Version": "3",
+        "Accept": "application/json"
     }
-    urls = [
-        f"https://lookup.binlist.net/{bin_num}",
-        f"https://data.handyapi.com/bin/{bin_num}"
-    ]
+    url = f"https://lookup.binlist.net/{bin_num}"
     
-    for url in urls:
-        try:
-            response = requests.get(url, headers=headers, timeout=5)
-            if response.status_code == 200:
-                res = response.json()
-                if res and isinstance(res, dict):
-                    scheme = res.get('scheme') or res.get('Scheme') or res.get('card', {}).get('scheme') or 'Unknown'
-                    bank_info = res.get('bank', {})
-                    bank_name = bank_info.get('name') if isinstance(bank_info, dict) else res.get('Bank', 'Unknown')
-                    
-                    country_info = res.get('country', {})
-                    if isinstance(country_info, dict):
-                        cou_code = country_info.get('code') or country_info.get('Alpha2') or 'Unknown'
-                        cou_name = country_info.get('name') or country_info.get('Name') or 'Unknown'
-                    else:
-                        cou_code = res.get('Country', 'Unknown')
-                        cou_name = res.get('CountryName', 'Unknown')
-                    
-                    if scheme != 'Unknown' or bank_name != 'Unknown':
-                        return {
-                            "status": "VALID",
-                            "bin": bin_num,
-                            "scheme": scheme,
-                            "bank": bank_name,
-                            "country_code": cou_code,
-                            "country_name": cou_name
-                        }
-            elif response.status_code == 429:
-                return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
-        except requests.exceptions.Timeout:
-            return {"status": "TIMEOUT", "bin": bin_num, "reason": "Request Timeout"}
-        except Exception as e:
-            pass
-            
-    return {"status": "DEAD", "bin": bin_num, "reason": "Not found in API database"}
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            res = response.json()
+            if res and isinstance(res, dict):
+                scheme = res.get('scheme', 'Unknown')
+                
+                bank_info = res.get('bank', {})
+                bank_name = bank_info.get('name', 'Unknown') if isinstance(bank_info, dict) else 'Unknown'
+                
+                country_info = res.get('country', {})
+                if isinstance(country_info, dict):
+                    cou_code = country_info.get('alpha2', 'Unknown')
+                    cou_name = country_info.get('name', 'Unknown')
+                else:
+                    cou_code = 'Unknown'
+                    cou_name = 'Unknown'
+                
+                return {
+                    "status": "VALID",
+                    "bin": bin_num,
+                    "scheme": scheme,
+                    "bank": bank_name,
+                    "country_code": cou_code,
+                    "country_name": cou_name
+                }
+        elif response.status_code == 429:
+            return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
+        elif response.status_code == 404:
+            return {"status": "DEAD", "bin": bin_num, "reason": "Not found (404)"}
+    except requests.exceptions.Timeout:
+        return {"status": "TIMEOUT", "bin": bin_num, "reason": "Request Timeout"}
+    except Exception as e:
+        pass
+        
+    return {"status": "DEAD", "bin": bin_num, "reason": "Not found in database"}
 
 @app.route('/')
 def home():
-    return "Live Counter Bin Hunter Bot is running!"
+    return "Binlist Official API Bot is running!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -149,7 +149,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Live Hunt Setup*\n\nSend **BIN Prefix** (e.g., `37`, `47`, `574`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Binlist Hunt Setup*\n\nSend **BIN Prefix** (e.g., `37`, `47`, `52`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -174,7 +174,7 @@ def handle_interactive_steps(message):
     if action == "hunt_prefix":
         state["prefix"] = text
         state["action"] = "hunt_count"
-        bot.reply_to(message, "🔢 Send how many bins to scan (e.g., `20`, `50`, `100`):", parse_mode="Markdown")
+        bot.reply_to(message, "🔢 Send how many bins to scan (e.g., `20`, `50`):", parse_mode="Markdown")
         
     elif action == "hunt_count":
         if not text.isdigit():
@@ -182,7 +182,7 @@ def handle_interactive_steps(message):
             return
         state["count"] = int(text)
         state["action"] = "hunt_country"
-        bot.reply_to(message, "🌍 Send **Country Code** (e.g., `US`, `BR`) or type `all`:", parse_mode="Markdown")
+        bot.reply_to(message, "🌍 Send **Country Code** (e.g., `US`, `DK`) or type `all`:", parse_mode="Markdown")
         
     elif action == "hunt_country":
         prefix = state.get("prefix")
@@ -191,7 +191,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Initializing Live Hunt for {count} bins...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins via Binlist API (UA rotates every 4 requests)...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -206,24 +206,25 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== LIVE COUNT BIN HUNT REPORT ===",
+            f"=== BINLIST OFFICIAL API HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
         current_ua = generate_fresh_user_agent()
-        report_lines.append(f"[UA-ROTATION] Initial fresh User-Agent: {current_ua}\n")
+        report_lines.append(f"[UA-ROTATION] Initial User-Agent: {current_ua}\n")
         
         total_bins = len(generated_bins)
         
         for idx, b in enumerate(generated_bins, 1):
-            # Rotate User-Agent every 3 bins
-            if (idx - 1) % 3 == 0 and idx > 1:
+            # Rotate User-Agent strictly after every 4 requests as requested
+            if (idx - 1) % 4 == 0 and idx > 1:
                 current_ua = generate_fresh_user_agent()
-                
-            # Live Progress Update on Telegram Message
+                report_lines.append(f"\n[UA-ROTATION] Fresh User-Agent updated at request {idx}: {current_ua}\n")
+            
+            # Live Progress Update
             try:
                 progress_text = (
-                    f"⚡ *Live Hunting in Progress...*\n"
+                    f"⚡ *Binlist API Hunting in Progress...*\n"
                     f"━━━━━━━━━━━━━━━━━━━\n"
                     f"📊 Checked: `{idx}/{total_bins}`\n"
                     f"✅ Valid Found: `{len(valid_records)}`\n"
@@ -232,7 +233,7 @@ def handle_interactive_steps(message):
                 )
                 bot.edit_message_text(progress_text, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
             except Exception:
-                pass # Avoid hitting Telegram rate limits on message edits
+                pass
             
             result = check_single_bin_sync(b, current_ua)
             status = result["status"]
@@ -246,13 +247,13 @@ def handle_interactive_steps(message):
                     report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {cou_code}, {result['bank']})")
             elif status == "RATE_LIMITED":
                 report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (API Rate Limited - 429)")
-                time.sleep(1.5)
+                time.sleep(1)
             elif status == "TIMEOUT":
                 report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Request Timeout)")
             else:
-                report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ (Not found in database)")
+                report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
                 
-            time.sleep(0.4)
+            time.sleep(0.3)
             
         # Write report file
         report_filename = f"hunt_report_{user_id}.txt"
@@ -260,7 +261,7 @@ def handle_interactive_steps(message):
             f.write("\n".join(report_lines))
             
         with open(report_filename, "rb") as f:
-            bot.send_document(message.chat.id, f, caption=f"📊 *Live Hunt Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", parse_mode="Markdown")
+            bot.send_document(message.chat.id, f, caption=f"📊 *Hunt Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", parse_mode="Markdown")
             
         if valid_records:
             valid_filename = f"valid_bins_{user_id}.txt"
@@ -310,7 +311,7 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Checking bin details via Binlist API...*", parse_mode="Markdown")
         fresh_ua = generate_fresh_user_agent()
         res = check_single_bin_sync(bin_num, fresh_ua)
         
@@ -324,7 +325,7 @@ def handle_interactive_steps(message):
                    f"━━━━━━━━━━━━━━━━━━━")
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         else:
-            bot.edit_message_text(f"❌ *Invalid or dead bin:* `{bin_num}` (Reason: {res.get('reason', 'Dead')})", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Invalid or dead bin:* `{bin_num}` ({res.get('reason', 'Dead')})", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['check'])
 def check_single_bin(message):
@@ -334,7 +335,7 @@ def check_single_bin(message):
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            bot.reply_to(message, "Usage: `/check 475126`", parse_mode="Markdown")
+            bot.reply_to(message, "Usage: `/check 45717360`", parse_mode="Markdown")
             return
         bin_num = parts[1]
         msg = bot.reply_to(message, "⏳ *Checking...*", parse_mode="Markdown")
