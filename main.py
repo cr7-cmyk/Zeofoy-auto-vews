@@ -13,6 +13,7 @@ from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# Replace with your actual Telegram Bot Token directly or via environment variable
 TOKEN = os.environ.get("8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk")
 CHANNEL_USERNAME = "@ZenmodsXads"  # Target Channel for Force Subscribe
 
@@ -33,7 +34,6 @@ def get_random_headers():
         "Accept": "application/json, text/plain, */*"
     }
 
-# Helper function to verify channel subscription
 def is_user_subscribed(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
@@ -41,7 +41,6 @@ def is_user_subscribed(user_id):
             return True
         return False
     except Exception:
-        # If bot is not admin in the channel or channel username is invalid
         return True
 
 def send_subscription_prompt(chat_id):
@@ -53,8 +52,8 @@ def send_subscription_prompt(chat_id):
     
     msg_text = (
         "⚠️ *Access Denied!*\n\n"
-        f"বোটে কাজ করার আগে তোমাকে অবশ্যই আমাদের অফিসিয়াল চ্যানেলে জয়েন করতে হবে: {CHANNEL_USERNAME}\n\n"
-        "নিচের বাটনে ক্লিক করে জয়েন করো এবং 'Verify Subscription' চাপো।"
+        f"Before using this bot, you must join our official channel: {CHANNEL_USERNAME}\n\n"
+        "Click the button below to join and then click 'Verify Subscription'."
     )
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
