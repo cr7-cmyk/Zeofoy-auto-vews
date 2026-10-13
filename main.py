@@ -13,8 +13,11 @@ from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Replace with your actual Telegram Bot Token directly or via environment variable
-TOKEN = os.environ.get("8664861867:AAF5Wq79aekFKDcE6vFT2jFO_3w4jjFgLmk")
+# Safely fetching token from Render environment variables
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+if not TOKEN:
+    raise ValueError("TELEGRAM_TOKEN environment variable is missing! Please set it in your Render dashboard.")
+
 CHANNEL_USERNAME = "@ZenmodsXads"  # Target Channel for Force Subscribe
 
 bot = telebot.TeleBot(TOKEN)
