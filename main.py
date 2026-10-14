@@ -67,58 +67,72 @@ def send_subscription_prompt(chat_id):
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
 def check_single_bin_sync(bin_num, custom_ua):
-    # Fallback dual-API logic inspired by your PHP implementation
-    urls = [
-        f"https://data.handyapi.com/bin/{bin_num}",
-        f"https://lookup.binlist.net/{bin_num}"
-    ]
+    # Fetching directly through your self-hosted site zmshortener.xo.je
+    api_url = f"https://zmshortener.xo.je/?bin={bin_num}"
     
     headers = {
         "User-Agent": custom_ua,
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Version": "3"
+        "Accept": "application/json, text/plain, */*"
     }
     
-    for url in urls:
-        try:
-            response = requests.get(url, headers=headers, timeout=6)
-            if response.status_code == 200:
-                res = response.json()
-                if res and isinstance(res, dict):
-                    scheme = res.get('scheme') or res.get('Scheme') or res.get('card', {}).get('scheme') or 'Unknown'
-                    
-                    bank_info = res.get('bank', {})
-                    bank_name = bank_info.get('name') if isinstance(bank_info, dict) else res.get('Bank', 'Unknown')
-                    
-                    country_info = res.get('country', {})
-                    if isinstance(country_info, dict):
-                        cou_code = country_info.get('code') or country_info.get('alpha2') or 'Unknown'
-                        cou_name = country_info.get('name') or country_info.get('Name') or 'Unknown'
-                    else:
-                        cou_code = res.get('Country', 'Unknown')
-                        cou_name = res.get('CountryName', 'Unknown')
-                    
-                    if scheme != 'Unknown' or bank_name != 'Unknown':
-                        return {
-                            "status": "VALID",
-                            "bin": bin_num,
-                            "scheme": scheme,
-                            "bank": bank_name,
-                            "country_code": cou_code,
-                            "country_name": cou_name
-                        }
-            elif response.status_code == 429:
-                return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
-        except requests.exceptions.Timeout:
-            continue
-        except Exception:
-            continue
-            
+    try:
+        response = requests.get(api_url, headers=headers, timeout=8)
+        if response.status_code == 200:
+            res = response.json()
+            if res and isinstance(res, dict):
+                scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
+                
+                card_type = res.get('Type') or res.get('type') or ''
+                card_tier = res.get('CardTier') or res.get('Brand') or res.get('tier') or res.get('category') or ''
+                
+                full_type = card_type
+                if card_tier and card_tier.lower() != card_type.lower():
+                    full_type += f" ({card_tier})"
+                if not full_type:
+                    full_type = "Unknown"
+
+                bank_name = "Unknown"
+                if "Issuer" in res and res["Issuer"]:
+                    bank_name = res["Issuer"]
+                elif isinstance(res.get('Bank'), dict):
+                    bank_name = res['Bank'].get('Name') or res['Bank'].get('name') or 'Unknown'
+                elif isinstance(res.get('bank'), dict):
+                    bank_name = res['bank'].get('name') or 'Unknown'
+                elif isinstance(res.get('Bank'), str):
+                    bank_name = res['Bank']
+                elif isinstance(res.get('bank'), str):
+                    bank_name = res['bank']
+
+                cou_code = 'Unknown'
+                cou_name = 'Unknown'
+                country_info = res.get('Country') or res.get('country')
+                if isinstance(country_info, dict):
+                    cou_code = country_info.get('A2') or country_info.get('alpha2') or country_info.get('code') or 'Unknown'
+                    cou_name = country_info.get('Name') or country_info.get('name') or 'Unknown'
+                elif isinstance(country_info, str):
+                    cou_name = country_info
+
+                return {
+                    "status": "VALID",
+                    "bin": bin_num,
+                    "scheme": scheme,
+                    "type": full_type,
+                    "bank": bank_name,
+                    "country_code": cou_code,
+                    "country_name": cou_name
+                }
+        elif response.status_code == 429:
+            return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
+    except requests.exceptions.Timeout:
+        return {"status": "TIMEOUT", "bin": bin_num, "reason": "Request Timeout"}
+    except Exception as e:
+        return {"status": "DEAD", "bin": bin_num, "reason": str(e)}
+        
     return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
 
 @app.route('/')
 def home():
-    return "PHP Fallback Logic Bot is running successfully!"
+    return "ZMSHORTENER Pipeline Bot is running successfully!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -131,7 +145,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Advanced Tool Bot* 🔥\n\n"
+        "🔥 *Welcome to ZMSHORTENER Tool Bot* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -153,7 +167,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *PHP Fallback Hunt Setup*\n\nSend **BIN Prefix** (e.g., `4147`, `52`, `37`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `4147`, `52`, `37`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -195,7 +209,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with Dual-API Fallback & UA rotation every 4 requests...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins via zmshortener.xo.je pipeline...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -210,25 +224,20 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== PHP FALLBACK LOGIC HUNT REPORT ===",
+            f"=== ZMSHORTENER HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
         current_ua = generate_fresh_user_agent()
-        report_lines.append(f"[UA-ROTATION] Initial User-Agent: {current_ua}\n")
-        
         total_bins = len(generated_bins)
         
         for idx, b in enumerate(generated_bins, 1):
-            # Rotate User-Agent strictly after every 4 requests
             if (idx - 1) % 4 == 0 and idx > 1:
                 current_ua = generate_fresh_user_agent()
-                report_lines.append(f"\n[UA-ROTATION] Fresh User-Agent updated at request {idx}: {current_ua}\n")
             
-            # Live Progress Update
             try:
                 progress_text = (
-                    f"⚡ *Fallback API Hunting in Progress...*\n"
+                    f"⚡ *Hunting in Progress...*\n"
                     f"━━━━━━━━━━━━━━━━━━━\n"
                     f"📊 Checked: `{idx}/{total_bins}`\n"
                     f"✅ Valid Found: `{len(valid_records)}`\n"
@@ -247,8 +256,8 @@ def handle_interactive_steps(message):
                 if country and cou_code.upper() != country:
                     report_lines.append(f"[{idx}] BIN: {b} -> SUCCESS but Skipped (Country mismatch: {cou_code})")
                 else:
-                    valid_records.append(f"Bin: {result['bin']} | Scheme: {result['scheme']} | Country: {cou_code} ({result['country_name']}) | Bank: {result['bank']}")
-                    report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {cou_code}, {result['bank']})")
+                    valid_records.append(f"Bin: {result['bin']} | Scheme: {result['scheme']} | Type: {result['type']} | Country: {cou_code} ({result['country_name']}) | Bank: {result['bank']}")
+                    report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {result['type']}, {cou_code}, {result['bank']})")
             elif status == "RATE_LIMITED":
                 report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Rate Limited - 429)")
                 time.sleep(1.5)
@@ -257,9 +266,8 @@ def handle_interactive_steps(message):
             else:
                 report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
                 
-            time.sleep(0.4)
+            time.sleep(0.3)
             
-        # Write report file
         report_filename = f"hunt_report_{user_id}.txt"
         with open(report_filename, "w", encoding="utf-8") as f:
             f.write("\n".join(report_lines))
@@ -315,7 +323,7 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Checking bin details via Fallback APIs...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Checking bin details via zmshortener.xo.je...*", parse_mode="Markdown")
         fresh_ua = generate_fresh_user_agent()
         res = check_single_bin_sync(bin_num, fresh_ua)
         
@@ -324,6 +332,7 @@ def handle_interactive_steps(message):
                    f"━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 *Bin:* `{res['bin']}`\n"
                    f"💳 *Scheme:* `{res['scheme']}`\n"
+                   f"🏷 *Type:* `{res['type']}`\n"
                    f"🌍 *Country:* `{res['country_code']}` ({res['country_name']})\n"
                    f"🏛 *Bank:* `{res['bank']}`\n"
                    f"━━━━━━━━━━━━━━━━━━━")
@@ -339,14 +348,14 @@ def check_single_bin(message):
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            bot.reply_to(message, "Usage: `/check 414720`", parse_mode="Markdown")
+            bot.reply_to(message, "Usage: `/check 527917`", parse_mode="Markdown")
             return
         bin_num = parts[1]
         msg = bot.reply_to(message, "⏳ *Checking...*", parse_mode="Markdown")
         fresh_ua = generate_fresh_user_agent()
         res = check_single_bin_sync(bin_num, fresh_ua)
         if res["status"] == "VALID":
-            out = f"✅ Bin: {res['bin']} | Scheme: {res['scheme']} | Country: {res['country_code']} | Bank: {res['bank']}"
+            out = f"✅ Bin: {res['bin']} | Scheme: {res['scheme']} | Type: {res['type']} | Country: {res['country_code']} | Bank: {res['bank']}"
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id)
         else:
             bot.edit_message_text(f"❌ Dead bin: {bin_num}", chat_id=message.chat.id, message_id=msg.message_id)
