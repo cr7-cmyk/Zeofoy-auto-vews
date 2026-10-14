@@ -269,23 +269,50 @@ def handle_interactive_steps(message):
                 
             time.sleep(2)
             
+        # Cleanly delete the progress message first
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
+        except Exception:
+            pass
+
+        # Send Report File
         report_filename = f"hunt_report_{user_id}.txt"
-        with open(report_filename, "w", encoding="utf-8") as f:
-            f.write("\n".join(report_lines))
+        try:
+            with open(report_filename, "w", encoding="utf-8") as f:
+                f.write("\n".join(report_lines))
             
-        with open(report_filename, "rb") as f:
-            bot.send_document(message.chat.id, f, caption=f"📊 *Hunt Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", parse_mode="Markdown")
+            with open(report_filename, "rb") as f:
+                bot.send_document(
+                    message.chat.id, 
+                    f, 
+                    caption=f"📊 *Hunt Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
+                    parse_mode="Markdown"
+                )
+        except Exception as e:
+            bot.send_message(message.chat.id, f"⚠️ Error sending report file: {e}")
+        finally:
+            if os.path.exists(report_filename):
+                os.remove(report_filename)
             
+        # Send Valid Bins File if available
         if valid_records:
             valid_filename = f"valid_bins_{user_id}.txt"
-            with open(valid_filename, "w", encoding="utf-8") as f:
-                f.write("\n".join(valid_records))
-            with open(valid_filename, "rb") as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ *Valid Bins List*", parse_mode="Markdown")
-            os.remove(valid_filename)
-            
-        os.remove(report_filename)
-        bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
+            try:
+                with open(valid_filename, "w", encoding="utf-8") as f:
+                    f.write("\n".join(valid_records))
+                
+                with open(valid_filename, "rb") as f:
+                    bot.send_document(
+                        message.chat.id, 
+                        f, 
+                        caption=f"✅ *Valid Bins List*", 
+                        parse_mode="Markdown"
+                    )
+            except Exception as e:
+                bot.send_message(message.chat.id, f"⚠️ Error sending valid bins file: {e}")
+            finally:
+                if os.path.exists(valid_filename):
+                    os.remove(valid_filename)
 
     elif action == "gen_bin":
         state["bin"] = text
@@ -314,11 +341,14 @@ def handle_interactive_steps(message):
             generated_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
             
         filename = f"generated_{user_id}.txt"
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write("\n".join(generated_list))
-        with open(filename, "rb") as f:
-            bot.send_document(message.chat.id, f, caption=f"✅ *Successfully generated {amount} cards!*", parse_mode="Markdown")
-        os.remove(filename)
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write("\n".join(generated_list))
+            with open(filename, "rb") as f:
+                bot.send_document(message.chat.id, f, caption=f"✅ *Successfully generated {amount} cards!*", parse_mode="Markdown")
+        finally:
+            if os.path.exists(filename):
+                os.remove(filename)
 
     elif action == "check_bin":
         bin_num = text
