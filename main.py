@@ -269,14 +269,14 @@ def handle_interactive_steps(message):
                 
             time.sleep(2)
             
-        # Cleanly delete the progress message first
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
         except Exception:
             pass
 
-        # Send Report File
-        report_filename = f"hunt_report_{user_id}.txt"
+        # Unique filename with Zenmods prefix and random numbers
+        rand_id = random.randint(10000, 99999)
+        report_filename = f"Zenmods_Report_{rand_id}.txt"
         try:
             with open(report_filename, "w", encoding="utf-8") as f:
                 f.write("\n".join(report_lines))
@@ -294,9 +294,9 @@ def handle_interactive_steps(message):
             if os.path.exists(report_filename):
                 os.remove(report_filename)
             
-        # Send Valid Bins File if available
         if valid_records:
-            valid_filename = f"valid_bins_{user_id}.txt"
+            valid_rand_id = random.randint(10000, 99999)
+            valid_filename = f"Zenmods_ValidBins_{valid_rand_id}.txt"
             try:
                 with open(valid_filename, "w", encoding="utf-8") as f:
                     f.write("\n".join(valid_records))
@@ -340,7 +340,8 @@ def handle_interactive_steps(message):
             c_cvv = str(random.randint(100, 9999)) if bin_input.startswith("3") else str(random.randint(100, 999))
             generated_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
             
-        filename = f"generated_{user_id}.txt"
+        gen_rand_id = random.randint(10000, 99999)
+        filename = f"Zenmods_Cards_{gen_rand_id}.txt"
         try:
             with open(filename, "w", encoding="utf-8") as f:
                 f.write("\n".join(generated_list))
