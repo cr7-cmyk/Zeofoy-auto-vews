@@ -138,7 +138,7 @@ def check_single_bin_sync(bin_num, custom_ua):
 
 @app.route('/')
 def home():
-    return "ZMSHORTENER Pipeline Bot is running successfully!"
+    return "Zenmods Checker Pipeline Bot is running successfully!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -151,7 +151,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to ZMSHORTENER Tool Bot* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -215,7 +215,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with 2s interval pipeline...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with Zenmods Checker...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -230,7 +230,7 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== ZMSHORTENER HUNT REPORT ===",
+            f"=== ZENMODS CHECKER HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
@@ -243,7 +243,7 @@ def handle_interactive_steps(message):
             
             try:
                 progress_text = (
-                    f"⚡ *Hunting in Progress...*\n"
+                    f"⚡ *Zenmods Checker Running...*\n"
                     f"━━━━━━━━━━━━━━━━━━━\n"
                     f"📊 Checked: `{idx}/{total_bins}`\n"
                     f"✅ Valid Found: `{len(valid_records)}`\n"
@@ -274,7 +274,6 @@ def handle_interactive_steps(message):
         except Exception:
             pass
 
-        # Unique filename with Zenmods prefix and random numbers
         rand_id = random.randint(10000, 99999)
         report_filename = f"Zenmods_Report_{rand_id}.txt"
         try:
@@ -285,7 +284,7 @@ def handle_interactive_steps(message):
                 bot.send_document(
                     message.chat.id, 
                     f, 
-                    caption=f"📊 *Hunt Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
+                    caption=f"📊 *Zenmods Checker Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
                     parse_mode="Markdown"
                 )
         except Exception as e:
@@ -305,7 +304,7 @@ def handle_interactive_steps(message):
                     bot.send_document(
                         message.chat.id, 
                         f, 
-                        caption=f"✅ *Valid Bins List*", 
+                        caption=f"✅ *Zenmods Valid Bins List*", 
                         parse_mode="Markdown"
                     )
             except Exception as e:
@@ -346,7 +345,7 @@ def handle_interactive_steps(message):
             with open(filename, "w", encoding="utf-8") as f:
                 f.write("\n".join(generated_list))
             with open(filename, "rb") as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ *Successfully generated {amount} cards!*", parse_mode="Markdown")
+                bot.send_document(message.chat.id, f, caption=f"✅ *Zenmods Checker: Successfully generated {amount} cards!*", parse_mode="Markdown")
         finally:
             if os.path.exists(filename):
                 os.remove(filename)
@@ -355,12 +354,12 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking details...*", parse_mode="Markdown")
         fresh_ua = generate_fresh_user_agent()
         res = check_single_bin_sync(bin_num, fresh_ua)
         
         if res["status"] == "VALID":
-            out = (f"✅ *Bin Info Found*\n"
+            out = (f"✅ *Zenmods Checker Result*\n"
                    f"━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 *Bin:* `{res['bin']}`\n"
                    f"💳 *Scheme:* `{res['scheme']}`\n"
