@@ -7,12 +7,11 @@ from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Safely fetching token from Render environment variables
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("TELEGRAM_TOKEN environment variable is missing! Please set it in your Render dashboard.")
 
-CHANNEL_USERNAME = "@ZenmodsXads"  # Target Channel for Force Subscribe
+CHANNEL_USERNAME = "@ZenmodsXads"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
@@ -20,7 +19,6 @@ app = Flask(__name__)
 USER_STATES = {}
 
 def generate_fresh_user_agent():
-    """Dynamically generates a fresh and randomized User-Agent string."""
     browsers = ["Chrome", "Firefox", "Safari", "Edge"]
     os_platforms = [
         ("Windows NT 10.0; Win64; x64", "AppleWebKit/537.36 (KHTML, like Gecko)"),
@@ -67,23 +65,26 @@ def send_subscription_prompt(chat_id):
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
 def check_single_bin_sync(bin_num, custom_ua):
-    api_url = f"https://zmshortener.xo.je/?bin={bin_num}"
+    bin6 = bin_num[:6]
+    urls = [
+        f"https://data.handyapi.com/bin/{bin6}",
+        f"https://lookup.binlist.net/{bin6}"
+    ]
+    
     headers = {
         "User-Agent": custom_ua,
-        "Accept": "application/json, text/plain, */*"
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Version": "3"
     }
     
-    for attempt in range(2):
+    for url in urls:
         try:
-            response = requests.get(api_url, headers=headers, timeout=8)
+            response = requests.get(url, headers=headers, timeout=8)
             if response.status_code == 200:
                 try:
                     res = response.json()
                 except Exception:
-                    if attempt == 0:
-                        time.sleep(1)
-                        continue
-                    return {"status": "DEAD", "bin": bin_num, "reason": "Invalid JSON response"}
+                    continue
 
                 if res and isinstance(res, dict):
                     scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
@@ -129,16 +130,9 @@ def check_single_bin_sync(bin_num, custom_ua):
                             "country_name": cou_name
                         }
             elif response.status_code == 429:
-                return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
-        except requests.exceptions.Timeout:
-            if attempt == 0:
-                time.sleep(1)
-                continue
-            return {"status": "TIMEOUT", "bin": bin_num, "reason": "Request Timeout"}
+                time.sleep(2)
         except Exception:
-            if attempt == 0:
-                time.sleep(1)
-                continue
+            continue
             
     return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
 
@@ -270,15 +264,10 @@ def handle_interactive_steps(message):
                 else:
                     valid_records.append(f"Bin: {result['bin']} | Scheme: {result['scheme']} | Type: {result['type']} | Country: {cou_code} ({result['country_name']}) | Bank: {result['bank']}")
                     report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {result['type']}, {cou_code}, {result['bank']})")
-            elif status == "RATE_LIMITED":
-                report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Rate Limited - 429)")
-                time.sleep(3)
-            elif status == "TIMEOUT":
-                report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Request Timeout)")
             else:
                 report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
                 
-            time.sleep(2) # 2 seconds delay set as requested
+            time.sleep(2)
             
         report_filename = f"hunt_report_{user_id}.txt"
         with open(report_filename, "w", encoding="utf-8") as f:
@@ -335,7 +324,7 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Checking bin details via zmshortener.xo.je...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Checking bin details...*", parse_mode="Markdown")
         fresh_ua = generate_fresh_user_agent()
         res = check_single_bin_sync(bin_num, fresh_ua)
         
