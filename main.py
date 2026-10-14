@@ -68,70 +68,78 @@ def send_subscription_prompt(chat_id):
 
 def check_single_bin_sync(bin_num, custom_ua):
     api_url = f"https://zmshortener.xo.je/?bin={bin_num}"
-    
     headers = {
         "User-Agent": custom_ua,
         "Accept": "application/json, text/plain, */*"
     }
     
-    try:
-        response = requests.get(api_url, headers=headers, timeout=8)
-        if response.status_code == 200:
-            try:
-                res = response.json()
-            except Exception:
-                return {"status": "DEAD", "bin": bin_num, "reason": "Invalid JSON response from server"}
+    for attempt in range(2):
+        try:
+            response = requests.get(api_url, headers=headers, timeout=8)
+            if response.status_code == 200:
+                try:
+                    res = response.json()
+                except Exception:
+                    if attempt == 0:
+                        time.sleep(1)
+                        continue
+                    return {"status": "DEAD", "bin": bin_num, "reason": "Invalid JSON response"}
 
-            if res and isinstance(res, dict):
-                scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
-                
-                card_type = res.get('Type') or res.get('type') or ''
-                card_tier = res.get('CardTier') or res.get('Brand') or res.get('tier') or res.get('category') or ''
-                
-                full_type = card_type
-                if card_tier and card_tier.lower() != card_type.lower():
-                    full_type += f" ({card_tier})"
-                if not full_type:
-                    full_type = "Unknown"
+                if res and isinstance(res, dict):
+                    scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
+                    
+                    card_type = res.get('Type') or res.get('type') or ''
+                    card_tier = res.get('CardTier') or res.get('Brand') or res.get('tier') or res.get('category') or ''
+                    
+                    full_type = card_type
+                    if card_tier and card_tier.lower() != card_type.lower():
+                        full_type += f" ({card_tier})"
+                    if not full_type:
+                        full_type = "Unknown"
 
-                bank_name = "Unknown"
-                if "Issuer" in res and res["Issuer"]:
-                    bank_name = res["Issuer"]
-                elif isinstance(res.get('Bank'), dict):
-                    bank_name = res['Bank'].get('Name') or res['Bank'].get('name') or 'Unknown'
-                elif isinstance(res.get('bank'), dict):
-                    bank_name = res['bank'].get('name') or 'Unknown'
-                elif isinstance(res.get('Bank'), str):
-                    bank_name = res['Bank']
-                elif isinstance(res.get('bank'), str):
-                    bank_name = res['bank']
+                    bank_name = "Unknown"
+                    if "Issuer" in res and res["Issuer"]:
+                        bank_name = res["Issuer"]
+                    elif isinstance(res.get('Bank'), dict):
+                        bank_name = res['Bank'].get('Name') or res['Bank'].get('name') or 'Unknown'
+                    elif isinstance(res.get('bank'), dict):
+                        bank_name = res['bank'].get('name') or 'Unknown'
+                    elif isinstance(res.get('Bank'), str):
+                        bank_name = res['Bank']
+                    elif isinstance(res.get('bank'), str):
+                        bank_name = res['bank']
 
-                cou_code = 'Unknown'
-                cou_name = 'Unknown'
-                country_info = res.get('Country') or res.get('country')
-                if isinstance(country_info, dict):
-                    cou_code = country_info.get('A2') or country_info.get('alpha2') or country_info.get('code') or 'Unknown'
-                    cou_name = country_info.get('Name') or country_info.get('name') or 'Unknown'
-                elif isinstance(country_info, str):
-                    cou_name = country_info
+                    cou_code = 'Unknown'
+                    cou_name = 'Unknown'
+                    country_info = res.get('Country') or res.get('country')
+                    if isinstance(country_info, dict):
+                        cou_code = country_info.get('A2') or country_info.get('alpha2') or country_info.get('code') or 'Unknown'
+                        cou_name = country_info.get('Name') or country_info.get('name') or 'Unknown'
+                    elif isinstance(country_info, str):
+                        cou_name = country_info
 
-                if scheme != 'Unknown' or bank_name != 'Unknown':
-                    return {
-                        "status": "VALID",
-                        "bin": bin_num,
-                        "scheme": scheme,
-                        "type": full_type,
-                        "bank": bank_name,
-                        "country_code": cou_code,
-                        "country_name": cou_name
-                    }
-        elif response.status_code == 429:
-            return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
-    except requests.exceptions.Timeout:
-        return {"status": "TIMEOUT", "bin": bin_num, "reason": "Request Timeout"}
-    except Exception as e:
-        return {"status": "DEAD", "bin": bin_num, "reason": str(e)}
-        
+                    if scheme != 'Unknown' or bank_name != 'Unknown':
+                        return {
+                            "status": "VALID",
+                            "bin": bin_num,
+                            "scheme": scheme,
+                            "type": full_type,
+                            "bank": bank_name,
+                            "country_code": cou_code,
+                            "country_name": cou_name
+                        }
+            elif response.status_code == 429:
+                return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
+        except requests.exceptions.Timeout:
+            if attempt == 0:
+                time.sleep(1)
+                continue
+            return {"status": "TIMEOUT", "bin": bin_num, "reason": "Request Timeout"}
+        except Exception:
+            if attempt == 0:
+                time.sleep(1)
+                continue
+            
     return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
 
 @app.route('/')
@@ -213,7 +221,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins via zmshortener.xo.je pipeline...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with 2s interval pipeline...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -264,13 +272,13 @@ def handle_interactive_steps(message):
                     report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {result['type']}, {cou_code}, {result['bank']})")
             elif status == "RATE_LIMITED":
                 report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Rate Limited - 429)")
-                time.sleep(1.5)
+                time.sleep(3)
             elif status == "TIMEOUT":
                 report_lines.append(f"[{idx}] BIN: {b} -> FAILED ❌ (Request Timeout)")
             else:
                 report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
                 
-            time.sleep(0.3)
+            time.sleep(2) # 2 seconds delay set as requested
             
         report_filename = f"hunt_report_{user_id}.txt"
         with open(report_filename, "w", encoding="utf-8") as f:
