@@ -67,7 +67,6 @@ def send_subscription_prompt(chat_id):
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
 def check_single_bin_sync(bin_num, custom_ua):
-    # Fetching directly through your self-hosted site zmshortener.xo.je
     api_url = f"https://zmshortener.xo.je/?bin={bin_num}"
     
     headers = {
@@ -78,7 +77,11 @@ def check_single_bin_sync(bin_num, custom_ua):
     try:
         response = requests.get(api_url, headers=headers, timeout=8)
         if response.status_code == 200:
-            res = response.json()
+            try:
+                res = response.json()
+            except Exception:
+                return {"status": "DEAD", "bin": bin_num, "reason": "Invalid JSON response from server"}
+
             if res and isinstance(res, dict):
                 scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
                 
@@ -112,15 +115,16 @@ def check_single_bin_sync(bin_num, custom_ua):
                 elif isinstance(country_info, str):
                     cou_name = country_info
 
-                return {
-                    "status": "VALID",
-                    "bin": bin_num,
-                    "scheme": scheme,
-                    "type": full_type,
-                    "bank": bank_name,
-                    "country_code": cou_code,
-                    "country_name": cou_name
-                }
+                if scheme != 'Unknown' or bank_name != 'Unknown':
+                    return {
+                        "status": "VALID",
+                        "bin": bin_num,
+                        "scheme": scheme,
+                        "type": full_type,
+                        "bank": bank_name,
+                        "country_code": cou_code,
+                        "country_name": cou_name
+                    }
         elif response.status_code == 429:
             return {"status": "RATE_LIMITED", "bin": bin_num, "reason": "API Rate Limit (429)"}
     except requests.exceptions.Timeout:
