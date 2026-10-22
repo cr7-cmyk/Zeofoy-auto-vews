@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+import time
 import csv
 import requests
 from flask import Flask
@@ -52,6 +53,8 @@ def download_and_load_csv():
                 b_type = "UNKNOWN"
                 category = ""
                 bank = "UNKNOWN"
+                phone = ""
+                url = ""
                 country_code = "UNKNOWN"
                 country_name = "UNKNOWN"
 
@@ -75,10 +78,13 @@ def download_and_load_csv():
                     if b_type == "UNKNOWN" and col_str.upper() in ["CREDIT", "DEBIT", "PREPAID"]:
                         b_type = col_str.upper()
 
+                # Positional mapping based on layout: [0]=bin, [1]=brand, [2]=type, [3]=category, [4]=issuer, [5]=phone, [6]=url, [7]=alpha_2, [9]=country
                 if len(row) > 1 and brand == "UNKNOWN" and row[1]: brand = row[1].strip().replace('"', '')
                 if len(row) > 2 and b_type == "UNKNOWN" and row[2]: b_type = row[2].strip().replace('"', '')
                 if len(row) > 3 and not category and row[3]: category = row[3].strip().replace('"', '')
                 if len(row) > 4 and bank == "UNKNOWN" and row[4]: bank = row[4].strip().replace('"', '')
+                if len(row) > 5 and row[5]: phone = row[5].strip().replace('"', '')
+                if len(row) > 6 and row[6]: url = row[6].strip().replace('"', '')
                 
                 if country_code == "UNKNOWN":
                     for i in range(len(row)):
@@ -99,6 +105,8 @@ def download_and_load_csv():
                         "scheme": brand.upper(),
                         "type": full_type.upper(),
                         "bank": bank,
+                        "phone": phone if phone else "N/A",
+                        "url": url if url else "N/A",
                         "country_code": country_code.upper(),
                         "country_name": country_name if country_name != "UNKNOWN" else "JAPAN" if country_code == "JP" else "UNKNOWN"
                     }
@@ -118,6 +126,8 @@ def search_bin_locally(bin_num):
             "scheme": data["scheme"],
             "type": data["type"],
             "bank": data["bank"],
+            "phone": data["phone"],
+            "url": data["url"],
             "country_code": data["country_code"],
             "country_name": data["country_name"]
         }
@@ -239,7 +249,14 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, "⚡ Processing your request...", parse_mode="Markdown")
+        # Live loading animation simulation
+        msg = bot.reply_to(message, "⏳ Processing.", parse_mode="Markdown")
+        for dot in ["..", "..."]:
+            time.sleep(0.4)
+            try:
+                bot.edit_message_text(f"⏳ Processing{dot}", chat_id=message.chat.id, message_id=msg.message_id)
+            except Exception:
+                pass
         
         valid_records = []
         seen_bins = set()
@@ -285,7 +302,7 @@ def handle_interactive_steps(message):
     elif action == "gen_bin":
         state["bin"] = text
         state["action"] = "gen_amount"
-        bot.reply_to(message, "💳 How many cards to generate? (e.g., `10`):", parse_mode="Markdown")
+        bot.reply_to(message, "💳 How many cards to generate? (e.g., `10` for chat, `100` for file):", parse_mode="Markdown")
         
     elif action == "gen_amount":
         if not text.isdigit():
@@ -295,6 +312,15 @@ def handle_interactive_steps(message):
         bin_input = state.get("bin")
         amount = int(text)
         del USER_STATES[user_id]
+        
+        # Live loading animation simulation for generator
+        msg = bot.reply_to(message, "⏳ Generating cards.", parse_mode="Markdown")
+        for dot in ["..", "..."]:
+            time.sleep(0.3)
+            try:
+                bot.edit_message_text(f"⏳ Generating cards{dot}", chat_id=message.chat.id, message_id=msg.message_id)
+            except Exception:
+                pass
         
         generated_list = []
         target_len = 16 if not bin_input.startswith("3") else 15
@@ -308,16 +334,27 @@ def handle_interactive_steps(message):
             c_cvv = str(random.randint(100, 9999)) if bin_input.startswith("3") else str(random.randint(100, 999))
             generated_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
             
-        gen_rand_id = random.randint(10000, 99999)
-        filename = f"Generated_Cards_{gen_rand_id}.txt"
         try:
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write("\n".join(generated_list))
-            with open(filename, "rb") as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ Successfully generated {amount} cards.", parse_mode="Markdown")
-        finally:
-            if os.path.exists(filename):
-                os.remove(filename)
+            bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
+        except Exception:
+            pass
+
+        # Condition check: <=50 show in chat, >50 send as text file
+        if amount <= 50:
+            cards_text = "\n".join(generated_list)
+            response_msg = f"✅ *Generated Cards ({amount}):*\n```text\n{cards_text}\n```"
+            bot.send_message(message.chat.id, response_msg, parse_mode="Markdown")
+        else:
+            gen_rand_id = random.randint(10000, 99999)
+            filename = f"Generated_Cards_{gen_rand_id}.txt"
+            try:
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write("\n".join(generated_list))
+                with open(filename, "rb") as f:
+                    bot.send_document(message.chat.id, f, caption=f"✅ Successfully generated {amount} cards (sent as file because it's over 50).", parse_mode="Markdown")
+            finally:
+                if os.path.exists(filename):
+                    os.remove(filename)
 
     elif action == "check_bin":
         bin_num = text
@@ -327,7 +364,15 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, "⏳ Checking details...", parse_mode="Markdown")
+        # Live loading animation simulation for lookup
+        msg = bot.reply_to(message, "⏳ Searching database.", parse_mode="Markdown")
+        for dot in ["..", "..."]:
+            time.sleep(0.3)
+            try:
+                bot.edit_message_text(f"⏳ Searching database{dot}", chat_id=message.chat.id, message_id=msg.message_id)
+            except Exception:
+                pass
+
         res = search_bin_locally(bin_num)
         
         if res["status"] == "VALID":
@@ -338,6 +383,8 @@ def handle_interactive_steps(message):
                    f"🏷 *Type:* `{res['type']}`\n"
                    f"🌍 *Country:* `{res['country_code']}` ({res['country_name']})\n"
                    f"🏛 *Bank:* `{res['bank']}`\n"
+                   f"📞 *Phone:* `{res['phone']}`\n"
+                   f"🌐 *Website:* `{res['url']}`\n"
                    f"━━━━━━━━━━━━━━━━━━━")
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         else:
@@ -359,11 +406,27 @@ def check_single_bin(message):
             bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
             
-        msg = bot.reply_to(message, "⏳ Checking...", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ Checking.", parse_mode="Markdown")
+        for dot in ["..", "..."]:
+            time.sleep(0.2)
+            try:
+                bot.edit_message_text(f"⏳ Checking{dot}", chat_id=message.chat.id, message_id=msg.message_id)
+            except Exception:
+                pass
+
         res = search_bin_locally(bin_num)
         if res["status"] == "VALID":
-            out = f"✅ Bin: {res['bin']} | Scheme: {res['scheme']} | Type: {res['type']} | Country: {res['country_code']} | Bank: {res['bank']}"
-            bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id)
+            out = (f"✅ *Bin Information Found*\n"
+                   f"━━━━━━━━━━━━━━━━━━━\n"
+                   f"📌 *Bin:* `{res['bin']}`\n"
+                   f"💳 *Scheme:* `{res['scheme']}`\n"
+                   f"🏷 *Type:* `{res['type']}`\n"
+                   f"🌍 *Country:* `{res['country_code']}` ({res['country_name']})\n"
+                   f"🏛 *Bank:* `{res['bank']}`\n"
+                   f"📞 *Phone:* `{res['phone']}`\n"
+                   f"🌐 *Website:* `{res['url']}`\n"
+                   f"━━━━━━━━━━━━━━━━━━━")
+            bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         else:
             bot.edit_message_text(f"❌ Not found: {bin_num}", chat_id=message.chat.id, message_id=msg.message_id)
     except Exception as e:
