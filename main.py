@@ -18,7 +18,6 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-# GitHub LFS Media Raw CSV Link configuration
 CSV_URL = "https://media.githubusercontent.com/media/cr7-cmyk/fuck/refs/heads/main/master_bin_list.csv"
 CSV_FILENAME = "master_bin_list.csv"
 BIN_DATABASE = {}
@@ -28,7 +27,6 @@ def download_and_load_csv():
     global BIN_DATABASE, is_db_loaded
     
     if not os.path.exists(CSV_FILENAME):
-        print("📥 Downloading Master BIN CSV file from GitHub LFS...")
         try:
             response = requests.get(CSV_URL, stream=True, timeout=120)
             if response.status_code == 200:
@@ -36,15 +34,11 @@ def download_and_load_csv():
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
-                print("✅ CSV file downloaded successfully from GitHub LFS!")
             else:
-                print(f"⚠️ Failed to download CSV. Status code: {response.status_code}")
                 return
-        except Exception as e:
-            print(f"⚠️ Error downloading CSV: {e}")
+        except Exception:
             return
 
-    print("⏳ Loading BIN database using Smart Dynamic Field Scanner...")
     temp_db = {}
     try:
         with open(CSV_FILENAME, mode="r", encoding="utf-8", errors="ignore") as f:
@@ -61,32 +55,26 @@ def download_and_load_csv():
                 country_code = "UNKNOWN"
                 country_name = "UNKNOWN"
 
-                # Smart Dynamic Scanner across all columns in the row
                 for col in row:
                     col_str = str(col).strip().replace('"', '')
                     if not col_str:
                         continue
                     
-                    # 1. Detect BIN (6 digits or float ending with .0)
                     if not clean_bin and (col_str.isdigit() or (col_str.endswith('.0') and col_str[:-2].isdigit())):
                         potential_bin = col_str.split('.')[0]
                         if len(potential_bin) >= 6:
                             clean_bin = potential_bin.zfill(6)[:6]
                     
-                    # 2. Detect 2-letter Country Code (alpha_2 like JP, US, CN)
                     if country_code == "UNKNOWN" and len(col_str) == 2 and col_str.isalpha() and col_str.isupper():
                         if col_str not in ["DE", "CR", "PR"]:
                             country_code = col_str
 
-                    # 3. Detect Brand/Scheme
                     if brand == "UNKNOWN" and col_str.upper() in ["MASTERCARD", "VISA", "AMEX", "DISCOVER", "JCB", "UNIONPAY", "RUPAY", "PRIVATE LABEL", "LOCAL BRAND"]:
                         brand = col_str.upper()
 
-                    # 4. Detect Type
                     if b_type == "UNKNOWN" and col_str.upper() in ["CREDIT", "DEBIT", "PREPAID"]:
                         b_type = col_str.upper()
 
-                # Positional fallback mapping
                 if len(row) > 1 and brand == "UNKNOWN" and row[1]: brand = row[1].strip().replace('"', '')
                 if len(row) > 2 and b_type == "UNKNOWN" and row[2]: b_type = row[2].strip().replace('"', '')
                 if len(row) > 3 and not category and row[3]: category = row[3].strip().replace('"', '')
@@ -117,9 +105,8 @@ def download_and_load_csv():
                     
         BIN_DATABASE = temp_db
         is_db_loaded = True
-        print(f"✅ Loaded {len(BIN_DATABASE)} unique bins into memory successfully!")
-    except Exception as e:
-        print(f"⚠️ Error parsing CSV file: {e}")
+    except Exception:
+        pass
 
 def search_bin_locally(bin_num):
     bin6 = str(bin_num)[:6].zfill(6)
@@ -134,7 +121,7 @@ def search_bin_locally(bin_num):
             "country_code": data["country_code"],
             "country_name": data["country_name"]
         }
-    return {"status": "DEAD", "bin": bin_num, "reason": "Not found in local CSV"}
+    return {"status": "DEAD", "bin": bin_num}
 
 def is_user_subscribed(user_id):
     try:
@@ -143,7 +130,7 @@ def is_user_subscribed(user_id):
             return True
         return False
     except Exception:
-        return True
+        return False
 
 def send_subscription_prompt(chat_id):
     markup = InlineKeyboardMarkup()
@@ -154,15 +141,14 @@ def send_subscription_prompt(chat_id):
     
     msg_text = (
         "⚠️ *Access Denied!*\n\n"
-        f"Before using this bot, you must join our official channel: {CHANNEL_USERNAME}\n\n"
-        "Click the button below to join and then click 'Verify Subscription'."
+        f"Please join our official channel first: {CHANNEL_USERNAME}\n\n"
+        "After joining, click the 'Verify Subscription' button below."
     )
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
 @app.route('/')
 def home():
-    status = "Ready" if is_db_loaded else "Downloading/Loading Database..."
-    return f"Zenmods LFS Bot is running! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
+    return "Bot is active and running."
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -175,11 +161,8 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Advanced LFS Checker* 🔥\n\n"
-        "Use buttons or commands below:\n"
-        "• `/check <bin>`\n"
-        "• `/hunt <prefix> <count> <country>`\n"
-        "• `/gen <bin> [amount]`"
+        "🔥 *Welcome to Card Tools Bot* 🔥\n\n"
+        "Choose an option below to get started:"
     )
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
@@ -188,30 +171,43 @@ def callback_inline(call):
     user_id = call.from_user.id
     if call.data == "verify_sub":
         if is_user_subscribed(user_id):
-            bot.answer_callback_query(call.id, "✅ Verification Successful!")
+            bot.answer_callback_query(call.id, "✅ Verified successfully!")
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
             send_welcome(call.message)
         else:
             bot.answer_callback_query(call.id, "❌ You haven't joined the channel yet!", show_alert=True)
             
     elif call.data == "btn_hunt":
+        if not is_user_subscribed(user_id):
+            send_subscription_prompt(call.message.chat.id)
+            return
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `5279`, `4241`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 Send **BIN Prefix** (e.g., `5279`, `4241`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
+        if not is_user_subscribed(user_id):
+            send_subscription_prompt(call.message.chat.id)
+            return
         USER_STATES[user_id] = {"action": "gen_bin"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Generator Setup*\n\nSend **BIN number**:", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 Send **BIN number**:", parse_mode="Markdown")
         
     elif call.data == "btn_check":
+        if not is_user_subscribed(user_id):
+            send_subscription_prompt(call.message.chat.id)
+            return
         USER_STATES[user_id] = {"action": "check_bin"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Checker Setup*\n\nSend **BIN** to check:", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 Send **BIN** to check:", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.from_user.id in USER_STATES)
 def handle_interactive_steps(message):
     user_id = message.from_user.id
+    if not is_user_subscribed(user_id):
+        send_subscription_prompt(message.chat.id)
+        return
+
     state = USER_STATES.get(user_id)
     if not state:
         return
@@ -226,7 +222,7 @@ def handle_interactive_steps(message):
         
     elif action == "hunt_count":
         if not text.isdigit():
-            bot.reply_to(message, "⚠️ Enter a valid number.")
+            bot.reply_to(message, "⚠️ Please enter a valid number.")
             return
         state["count"] = int(text)
         state["action"] = "hunt_country"
@@ -240,10 +236,10 @@ def handle_interactive_steps(message):
         del USER_STATES[user_id]
         
         if not is_db_loaded:
-            bot.reply_to(message, "⏳ *Database is still downloading/loading. Please wait a few seconds and try again.*", parse_mode="Markdown")
+            bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, f"⚡ *Searching for {count} bins matching `{prefix}`...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⚡ Processing your request...", parse_mode="Markdown")
         
         valid_records = []
         seen_bins = set()
@@ -266,7 +262,7 @@ def handle_interactive_steps(message):
 
         if valid_records:
             valid_rand_id = random.randint(10000, 99999)
-            valid_filename = f"Zenmods_ValidBins_{valid_rand_id}.txt"
+            valid_filename = f"Valid_Bins_{valid_rand_id}.txt"
             try:
                 with open(valid_filename, "w", encoding="utf-8") as f:
                     f.write("\n".join(valid_records))
@@ -275,16 +271,16 @@ def handle_interactive_steps(message):
                     bot.send_document(
                         message.chat.id, 
                         f, 
-                        caption=f"✅ *Zenmods Valid Bins List*\nFound {len(valid_records)} unique valid bins matching prefix `{prefix}`.", 
+                        caption=f"✅ Found {len(valid_records)} bins matching `{prefix}`.", 
                         parse_mode="Markdown"
                     )
             except Exception as e:
-                bot.send_message(message.chat.id, f"⚠️ Error sending valid bins file: {e}")
+                bot.send_message(message.chat.id, f"⚠️ Error: {e}")
             finally:
                 if os.path.exists(valid_filename):
                     os.remove(valid_filename)
         else:
-            bot.send_message(message.chat.id, f"❌ No valid bins found matching prefix `{prefix}` with country `{country or 'ANY'}`.")
+            bot.send_message(message.chat.id, f"❌ No bins found matching prefix `{prefix}`.")
 
     elif action == "gen_bin":
         state["bin"] = text
@@ -293,7 +289,7 @@ def handle_interactive_steps(message):
         
     elif action == "gen_amount":
         if not text.isdigit():
-            bot.reply_to(message, "⚠️ Enter a valid number.")
+            bot.reply_to(message, "⚠️ Please enter a valid number.")
             return
         
         bin_input = state.get("bin")
@@ -313,12 +309,12 @@ def handle_interactive_steps(message):
             generated_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
             
         gen_rand_id = random.randint(10000, 99999)
-        filename = f"Zenmods_Cards_{gen_rand_id}.txt"
+        filename = f"Generated_Cards_{gen_rand_id}.txt"
         try:
             with open(filename, "w", encoding="utf-8") as f:
                 f.write("\n".join(generated_list))
             with open(filename, "rb") as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ *Zenmods Generator: Successfully generated {amount} cards!*", parse_mode="Markdown")
+                bot.send_document(message.chat.id, f, caption=f"✅ Successfully generated {amount} cards.", parse_mode="Markdown")
         finally:
             if os.path.exists(filename):
                 os.remove(filename)
@@ -328,14 +324,14 @@ def handle_interactive_steps(message):
         del USER_STATES[user_id]
         
         if not is_db_loaded:
-            bot.reply_to(message, "⏳ *Database is still loading. Please try again in a moment.*", parse_mode="Markdown")
+            bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Looking up in local CSV...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ Checking details...", parse_mode="Markdown")
         res = search_bin_locally(bin_num)
         
         if res["status"] == "VALID":
-            out = (f"✅ *Zenmods Local Check Result*\n"
+            out = (f"✅ *Bin Information Found*\n"
                    f"━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 *Bin:* `{res['bin']}`\n"
                    f"💳 *Scheme:* `{res['scheme']}`\n"
@@ -345,7 +341,7 @@ def handle_interactive_steps(message):
                    f"━━━━━━━━━━━━━━━━━━━")
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         else:
-            bot.edit_message_text(f"❌ *Not found in database:* `{bin_num}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ Not found in database: `{bin_num}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['check'])
 def check_single_bin(message):
@@ -360,10 +356,10 @@ def check_single_bin(message):
         bin_num = parts[1]
         
         if not is_db_loaded:
-            bot.reply_to(message, "⏳ *Database is still loading. Please try again in a moment.*", parse_mode="Markdown")
+            bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
             
-        msg = bot.reply_to(message, "⏳ *Checking...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ Checking...", parse_mode="Markdown")
         res = search_bin_locally(bin_num)
         if res["status"] == "VALID":
             out = f"✅ Bin: {res['bin']} | Scheme: {res['scheme']} | Type: {res['type']} | Country: {res['country_code']} | Bank: {res['bank']}"
