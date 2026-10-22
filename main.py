@@ -1,7 +1,6 @@
 import os
 import random
 import threading
-import time
 import csv
 import requests
 from flask import Flask
@@ -19,9 +18,9 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-# GitHub Raw CSV Link configuration
-CSV_URL = "https://raw.githubusercontent.com/venelinkochev/bin-list-data/master/bin-list-data.csv"
-CSV_FILENAME = "bin-list-data.csv"
+# Hugging Face Raw CSV Link configuration
+CSV_URL = "https://huggingface.co/datasets/mahim5445/fuck/raw/main/master_bin_list.csv"
+CSV_FILENAME = "master_bin_list.csv"
 BIN_DATABASE = {}
 is_db_loaded = False
 
@@ -29,7 +28,7 @@ def download_and_load_csv():
     global BIN_DATABASE, is_db_loaded
     
     if not os.path.exists(CSV_FILENAME):
-        print("📥 Downloading BIN CSV file from GitHub...")
+        print("📥 Downloading Master BIN CSV file from Hugging Face...")
         try:
             response = requests.get(CSV_URL, stream=True, timeout=120)
             if response.status_code == 200:
@@ -54,19 +53,19 @@ def download_and_load_csv():
                 bin_num = row.get("BIN") or row.get("bin") or row.get("iin")
                 if bin_num:
                     clean_bin = str(bin_num).strip().zfill(6)
-                    type_val = row.get("Type") or "UNKNOWN"
-                    cat_val = row.get("Category") or ""
+                    type_val = row.get("Type") or row.get("type") or "UNKNOWN"
+                    cat_val = row.get("Category") or row.get("category") or ""
                     full_type = type_val
                     if cat_val and cat_val.lower() != type_val.lower():
                         full_type += f" ({cat_val})"
 
                     temp_db[clean_bin] = {
                         "bin": clean_bin,
-                        "scheme": row.get("Brand") or "UNKNOWN",
+                        "scheme": row.get("Brand") or row.get("scheme") or row.get("brand") or "UNKNOWN",
                         "type": full_type,
-                        "bank": row.get("Issuer") or "UNKNOWN",
-                        "country_code": row.get("isoCode2") or "UNKNOWN",
-                        "country_name": row.get("CountryName") or "UNKNOWN"
+                        "bank": row.get("Issuer") or row.get("bank") or row.get("issuer") or "UNKNOWN",
+                        "country_code": row.get("isoCode2") or row.get("country_code") or "UNKNOWN",
+                        "country_name": row.get("CountryName") or row.get("country_name") or "UNKNOWN"
                     }
         BIN_DATABASE = temp_db
         is_db_loaded = True
@@ -201,7 +200,6 @@ def handle_interactive_steps(message):
         valid_records = []
         seen_bins = set()
         
-        # Unique ebong duplicate-free filtering
         for b_code, item in BIN_DATABASE.items():
             if b_code.startswith(prefix):
                 cou_code = item["country_code"].upper()
