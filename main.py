@@ -18,8 +18,8 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-# GitHub Raw CSV Link configuration
-CSV_URL = "https://raw.githubusercontent.com/cr7-cmyk/fuck/main/master_bin_list.csv"
+# GitHub LFS Media Raw CSV Link configuration
+CSV_URL = "https://media.githubusercontent.com/media/cr7-cmyk/fuck/refs/heads/main/master_bin_list.csv"
 CSV_FILENAME = "master_bin_list.csv"
 BIN_DATABASE = {}
 is_db_loaded = False
@@ -28,7 +28,7 @@ def download_and_load_csv():
     global BIN_DATABASE, is_db_loaded
     
     if not os.path.exists(CSV_FILENAME):
-        print("📥 Downloading Master BIN CSV file from GitHub...")
+        print("📥 Downloading Master BIN CSV file from GitHub LFS...")
         try:
             response = requests.get(CSV_URL, stream=True, timeout=120)
             if response.status_code == 200:
@@ -36,7 +36,7 @@ def download_and_load_csv():
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
-                print("✅ CSV file downloaded successfully from GitHub!")
+                print("✅ CSV file downloaded successfully from GitHub LFS!")
             else:
                 print(f"⚠️ Failed to download CSV. Status code: {response.status_code}")
                 return
@@ -44,7 +44,7 @@ def download_and_load_csv():
             print(f"⚠️ Error downloading CSV: {e}")
             return
 
-    print("⏳ Loading BIN database using exact column mapping...")
+    print("⏳ Loading BIN database using Smart Dynamic Field Scanner...")
     temp_db = {}
     try:
         with open(CSV_FILENAME, mode="r", encoding="utf-8", errors="ignore") as f:
@@ -53,37 +53,67 @@ def download_and_load_csv():
                 if not row or len(row) < 2:
                     continue
                 
-                # Header row filter
-                first_item = str(row[0]).strip().lower()
-                if "bin" in first_item or "iin" in first_item or not first_item.replace('.', '', 1).isdigit():
-                    continue
+                clean_bin = None
+                brand = "UNKNOWN"
+                b_type = "UNKNOWN"
+                category = ""
+                bank = "UNKNOWN"
+                country_code = "UNKNOWN"
+                country_name = "UNKNOWN"
 
-                # Clean BIN
-                clean_bin = first_item.split('.')[0].strip().zfill(6)[:6]
-                if not clean_bin.isdigit() or len(clean_bin) < 6:
-                    continue
+                # Smart Dynamic Scanner across all columns in the row
+                for col in row:
+                    col_str = str(col).strip().replace('"', '')
+                    if not col_str:
+                        continue
+                    
+                    # 1. Detect BIN (6 digits or float ending with .0)
+                    if not clean_bin and (col_str.isdigit() or (col_str.endswith('.0') and col_str[:-2].isdigit())):
+                        potential_bin = col_str.split('.')[0]
+                        if len(potential_bin) >= 6:
+                            clean_bin = potential_bin.zfill(6)[:6]
+                    
+                    # 2. Detect 2-letter Country Code (alpha_2 like JP, US, CN)
+                    if country_code == "UNKNOWN" and len(col_str) == 2 and col_str.isalpha() and col_str.isupper():
+                        if col_str not in ["DE", "CR", "PR"]:
+                            country_code = col_str
 
-                # Exact mapping based on provided layout:
-                # [0]=bin, [1]=brand, [2]=type, [3]=category, [4]=issuer, [7]=alpha_2, [9]=country
-                brand = row[1].strip() if len(row) > 1 and row[1] else "UNKNOWN"
-                b_type = row[2].strip() if len(row) > 2 and row[2] else "UNKNOWN"
-                category = row[3].strip() if len(row) > 3 and row[3] else ""
-                bank = row[4].strip() if len(row) > 4 and row[4] else "UNKNOWN"
-                country_code = row[7].strip() if len(row) > 7 and row[7] else "UNKNOWN"
-                country_name = row[9].strip() if len(row) > 9 and row[9] else "UNKNOWN"
+                    # 3. Detect Brand/Scheme
+                    if brand == "UNKNOWN" and col_str.upper() in ["MASTERCARD", "VISA", "AMEX", "DISCOVER", "JCB", "UNIONPAY", "RUPAY", "PRIVATE LABEL", "LOCAL BRAND"]:
+                        brand = col_str.upper()
 
-                full_type = b_type
-                if category and category.lower() != b_type.lower():
-                    full_type += f" ({category})"
+                    # 4. Detect Type
+                    if b_type == "UNKNOWN" and col_str.upper() in ["CREDIT", "DEBIT", "PREPAID"]:
+                        b_type = col_str.upper()
 
-                temp_db[clean_bin] = {
-                    "bin": clean_bin,
-                    "scheme": brand.upper(),
-                    "type": full_type.upper(),
-                    "bank": bank,
-                    "country_code": country_code.upper(),
-                    "country_name": country_name
-                }
+                # Positional fallback mapping
+                if len(row) > 1 and brand == "UNKNOWN" and row[1]: brand = row[1].strip().replace('"', '')
+                if len(row) > 2 and b_type == "UNKNOWN" and row[2]: b_type = row[2].strip().replace('"', '')
+                if len(row) > 3 and not category and row[3]: category = row[3].strip().replace('"', '')
+                if len(row) > 4 and bank == "UNKNOWN" and row[4]: bank = row[4].strip().replace('"', '')
+                
+                if country_code == "UNKNOWN":
+                    for i in range(len(row)):
+                        val = str(row[i]).strip().replace('"', '')
+                        if len(val) == 2 and val.isalpha() and val.isupper():
+                            country_code = val
+                            if i + 2 < len(row):
+                                country_name = str(row[i+2]).strip().replace('"', '')
+                            break
+
+                if clean_bin:
+                    full_type = b_type
+                    if category and category.lower() != b_type.lower():
+                        full_type += f" ({category})"
+
+                    temp_db[clean_bin] = {
+                        "bin": clean_bin,
+                        "scheme": brand.upper(),
+                        "type": full_type.upper(),
+                        "bank": bank,
+                        "country_code": country_code.upper(),
+                        "country_name": country_name if country_name != "UNKNOWN" else "JAPAN" if country_code == "JP" else "UNKNOWN"
+                    }
                     
         BIN_DATABASE = temp_db
         is_db_loaded = True
@@ -132,7 +162,7 @@ def send_subscription_prompt(chat_id):
 @app.route('/')
 def home():
     status = "Ready" if is_db_loaded else "Downloading/Loading Database..."
-    return f"Zenmods Bot is running! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
+    return f"Zenmods LFS Bot is running! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -145,7 +175,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Advanced Checker* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Advanced LFS Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
