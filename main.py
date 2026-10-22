@@ -19,45 +19,57 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-def generate_random_ip():
-    return f"{random.randint(11, 190)}.{random.randint(1, 254)}.{random.randint(1, 254)}.{random.randint(1, 254)}"
-
-def generate_advanced_headers():
-    browsers = ["Chrome", "Firefox", "Safari", "Edge"]
-    os_platforms = [
-        ("Windows NT 10.0; Win64; x64", "AppleWebKit/537.36 (KHTML, like Gecko)"),
-        ("Macintosh; Intel Mac OS X 10_15_7", "AppleWebKit/605.1.15 (KHTML, like Gecko)"),
-        ("X11; Linux x86_64", "Gecko/20100101"),
-        ("Windows NT 10.0; Win64; x64", "Chrome/122.0.0.0 Safari/537.36")
-    ]
-    browser = random.choice(browsers)
-    os_p, engine = random.choice(os_platforms)
-    ver_major = random.randint(115, 125)
-    ver_minor = random.randint(0, 9)
-    build = random.randint(1000, 9999)
+def check_single_bin_sync(bin_num):
+    bin6 = bin_num[:6]
+    url = f"https://binlist.io/lookup/{bin6}/"
     
-    if browser == "Chrome":
-        ua = f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36"
-    elif browser == "Firefox":
-        ua = f"Mozilla/5.0 ({os_p}; rv:{ver_major}.0) Gecko/20100101 Firefox/{ver_major}.0"
-    elif browser == "Safari":
-        ua = f"Mozilla/5.0 ({os_p}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.{random.randint(0,5)} Safari/605.1.15"
-    else:
-        ua = f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36 Edg/{ver_major}.0.{build}.{ver_minor}"
-
-    languages = ["en-US,en;q=0.9", "en-GB,en;q=0.8", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7", "fr-FR,fr;q=0.9,en-US;q=0.8"]
-    referers = ["https://www.google.com/", "https://bing.com/", "https://duckduckgo.com/", "https://github.com/"]
-
-    return {
-        "User-Agent": ua,
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": random.choice(languages),
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": random.choice(referers),
-        "X-Forwarded-For": generate_random_ip(),
-        "Client-IP": generate_random_ip(),
-        "Connection": "keep-alive"
+    headers = {
+        "User-Agent": "ZenmodsCheckerBot/2.0",
+        "Accept": "application/json"
     }
+    
+    for attempt in range(2):
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                try:
+                    res = response.json()
+                except Exception:
+                    continue
+
+                if res and isinstance(res, dict) and res.get("success") is True:
+                    scheme = res.get('scheme') or 'Unknown'
+                    card_type = res.get('type') or 'Unknown'
+                    category = res.get('category') or ''
+                    
+                    full_type = card_type
+                    if category and category.lower() != card_type.lower():
+                        full_type += f" ({category})"
+                        
+                    bank_info = res.get('bank') or {}
+                    bank_name = bank_info.get('name') or 'Unknown'
+                    
+                    country_info = res.get('country') or {}
+                    cou_code = country_info.get('alpha2') or 'Unknown'
+                    cou_name = country_info.get('name') or 'Unknown'
+                    
+                    return {
+                        "status": "VALID",
+                        "bin": bin_num,
+                        "scheme": scheme.upper(),
+                        "type": full_type.upper(),
+                        "bank": bank_name,
+                        "country_code": cou_code.upper(),
+                        "country_name": cou_name
+                    }
+                elif res.get("success") is False:
+                    return {"status": "DEAD", "bin": bin_num, "reason": res.get("reason", "Not found")}
+            elif response.status_code == 429:
+                time.sleep(1)
+        except Exception:
+            continue
+            
+    return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
 
 def is_user_subscribed(user_id):
     try:
@@ -82,77 +94,9 @@ def send_subscription_prompt(chat_id):
     )
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
-def check_single_bin_sync(bin_num):
-    bin6 = bin_num[:6]
-    urls = [
-        f"https://data.handyapi.com/bin/{bin6}",
-        f"https://lookup.binlist.net/{bin6}"
-    ]
-    
-    for url in urls:
-        for attempt in range(2):
-            try:
-                headers = generate_advanced_headers()
-                response = requests.get(url, headers=headers, timeout=5)
-                
-                if response.status_code == 200:
-                    try:
-                        res = response.json()
-                    except Exception:
-                        continue
-
-                    if res and isinstance(res, dict):
-                        scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
-                        card_type = res.get('Type') or res.get('type') or ''
-                        card_tier = res.get('CardTier') or res.get('Brand') or res.get('tier') or res.get('category') or ''
-                        
-                        full_type = card_type
-                        if card_tier and card_tier.lower() != card_type.lower():
-                            full_type += f" ({card_tier})"
-                        if not full_type:
-                            full_type = "Unknown"
-
-                        bank_name = "Unknown"
-                        if "Issuer" in res and res["Issuer"]:
-                            bank_name = res["Issuer"]
-                        elif isinstance(res.get('Bank'), dict):
-                            bank_name = res['Bank'].get('Name') or res['Bank'].get('name') or 'Unknown'
-                        elif isinstance(res.get('bank'), dict):
-                            bank_name = res['bank'].get('name') or 'Unknown'
-                        elif isinstance(res.get('Bank'), str):
-                            bank_name = res['Bank']
-                        elif isinstance(res.get('bank'), str):
-                            bank_name = res['bank']
-
-                        cou_code = 'Unknown'
-                        cou_name = 'Unknown'
-                        country_info = res.get('Country') or res.get('country')
-                        if isinstance(country_info, dict):
-                            cou_code = country_info.get('A2') or country_info.get('alpha2') or country_info.get('code') or 'Unknown'
-                            cou_name = country_info.get('Name') or country_info.get('name') or 'Unknown'
-                        elif isinstance(country_info, str):
-                            cou_name = country_info
-
-                        if scheme != 'Unknown' or bank_name != 'Unknown' or cou_code != 'Unknown':
-                            return {
-                                "status": "VALID",
-                                "bin": bin_num,
-                                "scheme": scheme,
-                                "type": full_type,
-                                "bank": bank_name,
-                                "country_code": cou_code,
-                                "country_name": cou_name
-                            }
-                elif response.status_code == 429:
-                    time.sleep(1)
-            except Exception:
-                continue
-            
-    return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
-
 @app.route('/')
 def home():
-    return "Zenmods Checker Pipeline Bot is running successfully!"
+    return "Zenmods Fast Binlist Bot is running successfully!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -165,7 +109,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Checker* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Fast Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -229,7 +173,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Lightning Fast Scanning {count} bins with Multi-threading...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Super Fast Binlist Scanning {count} bins...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -244,15 +188,15 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== ZENMODS FAST MULTITHREADED HUNT REPORT ===",
+            f"=== ZENMODS FAST BINLIST HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
         total_bins = len(generated_bins)
         completed_count = 0
         
-        # ThreadPoolExecutor দিয়ে একসাথে ৮টি রিকোয়েস্ট পাঠাবে
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        # Optimized with ThreadPoolExecutor (max_workers=5 for smooth rate control)
+        with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_bin = {executor.submit(check_single_bin_sync, b): b for b in generated_bins}
             
             for future in as_completed(future_to_bin):
@@ -274,10 +218,9 @@ def handle_interactive_steps(message):
                 else:
                     report_lines.append(f"[{completed_count}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
                 
-                # লাইভ প্রোগ্রেস আপডেট
                 try:
                     progress_text = (
-                        f"⚡ *Lightning Hunter Running...*\n"
+                        f"⚡ *Binlist Hunter Running...*\n"
                         f"━━━━━━━━━━━━━━━━━━━\n"
                         f"📊 Checked: `{completed_count}/{total_bins}`\n"
                         f"✅ Valid Found: `{len(valid_records)}`\n"
@@ -302,7 +245,7 @@ def handle_interactive_steps(message):
                 bot.send_document(
                     message.chat.id, 
                     f, 
-                    caption=f"📊 *Zenmods Fast Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
+                    caption=f"📊 *Zenmods Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
                     parse_mode="Markdown"
                 )
         except Exception as e:
