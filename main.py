@@ -18,7 +18,10 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-def generate_fresh_user_agent():
+def generate_random_ip():
+    return f"{random.randint(11, 190)}.{random.randint(1, 254)}.{random.randint(1, 254)}.{random.randint(1, 254)}"
+
+def generate_advanced_headers():
     browsers = ["Chrome", "Firefox", "Safari", "Edge"]
     os_platforms = [
         ("Windows NT 10.0; Win64; x64", "AppleWebKit/537.36 (KHTML, like Gecko)"),
@@ -33,13 +36,27 @@ def generate_fresh_user_agent():
     build = random.randint(1000, 9999)
     
     if browser == "Chrome":
-        return f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36"
+        ua = f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36"
     elif browser == "Firefox":
-        return f"Mozilla/5.0 ({os_p}; rv:{ver_major}.0) Gecko/20100101 Firefox/{ver_major}.0"
+        ua = f"Mozilla/5.0 ({os_p}; rv:{ver_major}.0) Gecko/20100101 Firefox/{ver_major}.0"
     elif browser == "Safari":
-        return f"Mozilla/5.0 ({os_p}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.{random.randint(0,5)} Safari/605.1.15"
+        ua = f"Mozilla/5.0 ({os_p}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.{random.randint(0,5)} Safari/605.1.15"
     else:
-        return f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36 Edg/{ver_major}.0.{build}.{ver_minor}"
+        ua = f"Mozilla/5.0 ({os_p}) {engine} Chrome/{ver_major}.0.{build}.{ver_minor} Safari/537.36 Edg/{ver_major}.0.{build}.{ver_minor}"
+
+    languages = ["en-US,en;q=0.9", "en-GB,en;q=0.8", "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7", "fr-FR,fr;q=0.9,en-US;q=0.8"]
+    referers = ["https://www.google.com/", "https://bing.com/", "https://duckduckgo.com/", "https://github.com/"]
+
+    return {
+        "User-Agent": ua,
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": random.choice(languages),
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": random.choice(referers),
+        "X-Forwarded-For": generate_random_ip(),
+        "Client-IP": generate_random_ip(),
+        "Connection": "keep-alive"
+    }
 
 def is_user_subscribed(user_id):
     try:
@@ -64,75 +81,72 @@ def send_subscription_prompt(chat_id):
     )
     bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=markup)
 
-def check_single_bin_sync(bin_num, custom_ua):
+def check_single_bin_sync(bin_num):
     bin6 = bin_num[:6]
     urls = [
         f"https://data.handyapi.com/bin/{bin6}",
         f"https://lookup.binlist.net/{bin6}"
     ]
     
-    headers = {
-        "User-Agent": custom_ua,
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Version": "3"
-    }
-    
     for url in urls:
-        try:
-            response = requests.get(url, headers=headers, timeout=8)
-            if response.status_code == 200:
-                try:
-                    res = response.json()
-                except Exception:
-                    continue
+        for attempt in range(2):
+            try:
+                headers = generate_advanced_headers()
+                response = requests.get(url, headers=headers, timeout=6)
+                
+                if response.status_code == 200:
+                    try:
+                        res = response.json()
+                    except Exception:
+                        continue
 
-                if res and isinstance(res, dict):
-                    scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
-                    
-                    card_type = res.get('Type') or res.get('type') or ''
-                    card_tier = res.get('CardTier') or res.get('Brand') or res.get('tier') or res.get('category') or ''
-                    
-                    full_type = card_type
-                    if card_tier and card_tier.lower() != card_type.lower():
-                        full_type += f" ({card_tier})"
-                    if not full_type:
-                        full_type = "Unknown"
+                    if res and isinstance(res, dict):
+                        scheme = res.get('Scheme') or res.get('scheme') or res.get('brand') or 'Unknown'
+                        card_type = res.get('Type') or res.get('type') or ''
+                        card_tier = res.get('CardTier') or res.get('Brand') or res.get('tier') or res.get('category') or ''
+                        
+                        full_type = card_type
+                        if card_tier and card_tier.lower() != card_type.lower():
+                            full_type += f" ({card_tier})"
+                        if not full_type:
+                            full_type = "Unknown"
 
-                    bank_name = "Unknown"
-                    if "Issuer" in res and res["Issuer"]:
-                        bank_name = res["Issuer"]
-                    elif isinstance(res.get('Bank'), dict):
-                        bank_name = res['Bank'].get('Name') or res['Bank'].get('name') or 'Unknown'
-                    elif isinstance(res.get('bank'), dict):
-                        bank_name = res['bank'].get('name') or 'Unknown'
-                    elif isinstance(res.get('Bank'), str):
-                        bank_name = res['Bank']
-                    elif isinstance(res.get('bank'), str):
-                        bank_name = res['bank']
+                        bank_name = "Unknown"
+                        if "Issuer" in res and res["Issuer"]:
+                            bank_name = res["Issuer"]
+                        elif isinstance(res.get('Bank'), dict):
+                            bank_name = res['Bank'].get('Name') or res['Bank'].get('name') or 'Unknown'
+                        elif isinstance(res.get('bank'), dict):
+                            bank_name = res['bank'].get('name') or 'Unknown'
+                        elif isinstance(res.get('Bank'), str):
+                            bank_name = res['Bank']
+                        elif isinstance(res.get('bank'), str):
+                            bank_name = res['bank']
 
-                    cou_code = 'Unknown'
-                    cou_name = 'Unknown'
-                    country_info = res.get('Country') or res.get('country')
-                    if isinstance(country_info, dict):
-                        cou_code = country_info.get('A2') or country_info.get('alpha2') or country_info.get('code') or 'Unknown'
-                        cou_name = country_info.get('Name') or country_info.get('name') or 'Unknown'
-                    elif isinstance(country_info, str):
-                        cou_name = country_info
+                        cou_code = 'Unknown'
+                        cou_name = 'Unknown'
+                        country_info = res.get('Country') or res.get('country')
+                        if isinstance(country_info, dict):
+                            cou_code = country_info.get('A2') or country_info.get('alpha2') or country_info.get('code') or 'Unknown'
+                            cou_name = country_info.get('Name') or country_info.get('name') or 'Unknown'
+                        elif isinstance(country_info, str):
+                            cou_name = country_info
 
-                    if scheme != 'Unknown' or bank_name != 'Unknown':
-                        return {
-                            "status": "VALID",
-                            "bin": bin_num,
-                            "scheme": scheme,
-                            "type": full_type,
-                            "bank": bank_name,
-                            "country_code": cou_code,
-                            "country_name": cou_name
-                        }
-            elif response.status_code == 429:
-                time.sleep(2)
-        except Exception:
-            continue
+                        if scheme != 'Unknown' or bank_name != 'Unknown' or cou_code != 'Unknown':
+                            return {
+                                "status": "VALID",
+                                "bin": bin_num,
+                                "scheme": scheme,
+                                "type": full_type,
+                                "bank": bank_name,
+                                "country_code": cou_code,
+                                "country_name": cou_name
+                            }
+                elif response.status_code == 429:
+                    time.sleep(1.5)
+            except Exception:
+                time.sleep(1)
+                continue
             
     return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
 
@@ -215,7 +229,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with Zenmods Checker...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with Advanced Bypass Pipeline...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -230,20 +244,16 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== ZENMODS CHECKER HUNT REPORT ===",
+            f"=== ZENMODS ADVANCED HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
-        current_ua = generate_fresh_user_agent()
         total_bins = len(generated_bins)
         
         for idx, b in enumerate(generated_bins, 1):
-            if (idx - 1) % 4 == 0 and idx > 1:
-                current_ua = generate_fresh_user_agent()
-            
             try:
                 progress_text = (
-                    f"⚡ *Zenmods Checker Running...*\n"
+                    f"⚡ *Bypass Checker Running...*\n"
                     f"━━━━━━━━━━━━━━━━━━━\n"
                     f"📊 Checked: `{idx}/{total_bins}`\n"
                     f"✅ Valid Found: `{len(valid_records)}`\n"
@@ -254,7 +264,7 @@ def handle_interactive_steps(message):
             except Exception:
                 pass
             
-            result = check_single_bin_sync(b, current_ua)
+            result = check_single_bin_sync(b)
             status = result["status"]
             
             if status == "VALID":
@@ -267,7 +277,7 @@ def handle_interactive_steps(message):
             else:
                 report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
                 
-            time.sleep(2)
+            time.sleep(1.2)
             
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
@@ -284,7 +294,7 @@ def handle_interactive_steps(message):
                 bot.send_document(
                     message.chat.id, 
                     f, 
-                    caption=f"📊 *Zenmods Checker Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
+                    caption=f"📊 *Zenmods Bypass Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
                     parse_mode="Markdown"
                 )
         except Exception as e:
@@ -354,9 +364,8 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking details...*", parse_mode="Markdown")
-        fresh_ua = generate_fresh_user_agent()
-        res = check_single_bin_sync(bin_num, fresh_ua)
+        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking details with Bypass...*", parse_mode="Markdown")
+        res = check_single_bin_sync(bin_num)
         
         if res["status"] == "VALID":
             out = (f"✅ *Zenmods Checker Result*\n"
@@ -383,8 +392,7 @@ def check_single_bin(message):
             return
         bin_num = parts[1]
         msg = bot.reply_to(message, "⏳ *Checking...*", parse_mode="Markdown")
-        fresh_ua = generate_fresh_user_agent()
-        res = check_single_bin_sync(bin_num, fresh_ua)
+        res = check_single_bin_sync(bin_num)
         if res["status"] == "VALID":
             out = f"✅ Bin: {res['bin']} | Scheme: {res['scheme']} | Type: {res['type']} | Country: {res['country_code']} | Bank: {res['bank']}"
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id)
