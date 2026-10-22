@@ -3,6 +3,7 @@ import random
 import threading
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -92,7 +93,7 @@ def check_single_bin_sync(bin_num):
         for attempt in range(2):
             try:
                 headers = generate_advanced_headers()
-                response = requests.get(url, headers=headers, timeout=6)
+                response = requests.get(url, headers=headers, timeout=5)
                 
                 if response.status_code == 200:
                     try:
@@ -143,9 +144,8 @@ def check_single_bin_sync(bin_num):
                                 "country_name": cou_name
                             }
                 elif response.status_code == 429:
-                    time.sleep(1.5)
+                    time.sleep(1)
             except Exception:
-                time.sleep(1)
                 continue
             
     return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
@@ -229,13 +229,13 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Scanning {count} bins with Advanced Bypass Pipeline...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Lightning Fast Scanning {count} bins with Multi-threading...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
         
         generated_bins = []
-        for _ in range(count * 2):
+        for _ in range(count * 3):
             us = "".join(random.choice(chars) for _ in range(length))
             u1 = prefix + us
             if len(u1) >= 6:
@@ -244,40 +244,48 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== ZENMODS ADVANCED HUNT REPORT ===",
+            f"=== ZENMODS FAST MULTITHREADED HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
         total_bins = len(generated_bins)
+        completed_count = 0
         
-        for idx, b in enumerate(generated_bins, 1):
-            try:
-                progress_text = (
-                    f"⚡ *Bypass Checker Running...*\n"
-                    f"━━━━━━━━━━━━━━━━━━━\n"
-                    f"📊 Checked: `{idx}/{total_bins}`\n"
-                    f"✅ Valid Found: `{len(valid_records)}`\n"
-                    f"🔍 Current BIN: `{b}`\n"
-                    f"━━━━━━━━━━━━━━━━━━━"
-                )
-                bot.edit_message_text(progress_text, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
-            except Exception:
-                pass
+        # ThreadPoolExecutor দিয়ে একসাথে ৮টি রিকোয়েস্ট পাঠাবে
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_bin = {executor.submit(check_single_bin_sync, b): b for b in generated_bins}
             
-            result = check_single_bin_sync(b)
-            status = result["status"]
-            
-            if status == "VALID":
-                cou_code = result['country_code']
-                if country and cou_code.upper() != country:
-                    report_lines.append(f"[{idx}] BIN: {b} -> SUCCESS but Skipped (Country mismatch: {cou_code})")
-                else:
-                    valid_records.append(f"Bin: {result['bin']} | Scheme: {result['scheme']} | Type: {result['type']} | Country: {cou_code} ({result['country_name']}) | Bank: {result['bank']}")
-                    report_lines.append(f"[{idx}] BIN: {b} -> VALID ✅ ({result['scheme']}, {result['type']}, {cou_code}, {result['bank']})")
-            else:
-                report_lines.append(f"[{idx}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
+            for future in as_completed(future_to_bin):
+                b = future_to_bin[future]
+                completed_count += 1
+                try:
+                    result = future.result()
+                except Exception:
+                    result = {"status": "DEAD", "bin": b, "reason": "Error"}
                 
-            time.sleep(1.2)
+                status = result["status"]
+                if status == "VALID":
+                    cou_code = result['country_code']
+                    if country and cou_code.upper() != country:
+                        report_lines.append(f"[{completed_count}] BIN: {b} -> SUCCESS but Skipped (Country mismatch: {cou_code})")
+                    else:
+                        valid_records.append(f"Bin: {result['bin']} | Scheme: {result['scheme']} | Type: {result['type']} | Country: {cou_code} ({result['country_name']}) | Bank: {result['bank']}")
+                        report_lines.append(f"[{completed_count}] BIN: {b} -> VALID ✅ ({result['scheme']}, {result['type']}, {cou_code}, {result['bank']})")
+                else:
+                    report_lines.append(f"[{completed_count}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
+                
+                # লাইভ প্রোগ্রেস আপডেট
+                try:
+                    progress_text = (
+                        f"⚡ *Lightning Hunter Running...*\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
+                        f"📊 Checked: `{completed_count}/{total_bins}`\n"
+                        f"✅ Valid Found: `{len(valid_records)}`\n"
+                        f"━━━━━━━━━━━━━━━━━━━"
+                    )
+                    bot.edit_message_text(progress_text, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+                except Exception:
+                    pass
             
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
@@ -294,7 +302,7 @@ def handle_interactive_steps(message):
                 bot.send_document(
                     message.chat.id, 
                     f, 
-                    caption=f"📊 *Zenmods Bypass Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
+                    caption=f"📊 *Zenmods Fast Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
                     parse_mode="Markdown"
                 )
         except Exception as e:
@@ -364,7 +372,7 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking details with Bypass...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking details...*", parse_mode="Markdown")
         res = check_single_bin_sync(bin_num)
         
         if res["status"] == "VALID":
