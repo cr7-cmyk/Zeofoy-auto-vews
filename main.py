@@ -19,18 +19,74 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
+def generate_realistic_browser_fingerprint():
+    # বাস্তব বিভিন্ন ডিভাইসের জেনুইন ইউজার এজেন্ট এবং প্ল্যাটফর্ম পুল
+    device_profiles = [
+        {
+            "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "sec-ch-ua": "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
+            "platform": "\"Windows\""
+        },
+        {
+            "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+            "sec-ch-ua": "\"Apple Safari\";v=\"17\", \"Not:A-Brand\";v=\"8\"",
+            "platform": "\"macOS\""
+        },
+        {
+            "ua": "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
+            "sec-ch-ua": "\"Firefox\";v=\"125\", \"Mozilla\";v=\"125\"",
+            "platform": "\"Linux\""
+        },
+        {
+            "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+            "sec-ch-ua": "\"Mobile Safari\";v=\"17\"",
+            "platform": "\"iOS\""
+        },
+        {
+            "ua": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36",
+            "sec-ch-ua": "\"Chromium\";v=\"124\", \"Android WebView\";v=\"124\"",
+            "platform": "\"Android\""
+        }
+    ]
+    
+    profile = random.choice(device_profiles)
+    fake_ip = f"{random.randint(11, 200)}.{random.randint(1, 254)}.{random.randint(1, 254)}.{random.randint(1, 254)}"
+    
+    return {
+        "User-Agent": profile["ua"],
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": random.choice(["en-US,en;q=0.9", "en-GB,en;q=0.8,en-US;q=0.7", "ja-JP,ja;q=0.9,en;q=0.8"]),
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Ch-Ua": profile["sec-ch-ua"],
+        "Sec-Ch-Ua-Mobile": "?1" if "Mobile" in profile["ua"] or "Android" in profile["ua"] or "iPhone" in profile["ua"] else "?0",
+        "Sec-Ch-Ua-Platform": profile["platform"],
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "X-Forwarded-For": fake_ip,
+        "X-Real-IP": fake_ip,
+        "Referer": random.choice([
+            "https://www.google.com/search?q=bin+lookup",
+            "https://binlist.io/",
+            "https://duckduckgo.com/?q=card+bin+checker",
+            "https://www.bing.com/"
+        ]),
+        "Connection": "keep-alive"
+    }
+
 def check_single_bin_sync(bin_num):
     bin6 = bin_num[:6]
     url = f"https://binlist.io/lookup/{bin6}/"
     
-    headers = {
-        "User-Agent": "ZenmodsCheckerBot/2.0",
-        "Accept": "application/json"
-    }
-    
-    for attempt in range(2):
+    for attempt in range(3):
         try:
-            response = requests.get(url, headers=headers, timeout=5)
+            headers = generate_realistic_browser_fingerprint()
+            # রেন্ডম সামান্য মাইক্রো-স্লিপ যাতে ট্রাফিক দেখতে হিউম্যান ন্যাচারাল লাগে
+            time.sleep(random.uniform(0.05, 0.2))
+            
+            response = requests.get(url, headers=headers, timeout=6)
             if response.status_code == 200:
                 try:
                     res = response.json()
@@ -65,7 +121,7 @@ def check_single_bin_sync(bin_num):
                 elif res.get("success") is False:
                     return {"status": "DEAD", "bin": bin_num, "reason": res.get("reason", "Not found")}
             elif response.status_code == 429:
-                time.sleep(1)
+                time.sleep(1 + attempt)
         except Exception:
             continue
             
@@ -96,7 +152,7 @@ def send_subscription_prompt(chat_id):
 
 @app.route('/')
 def home():
-    return "Zenmods Fast Binlist Bot is running successfully!"
+    return "Zenmods Real-Fingerprint Bot is running successfully!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -109,7 +165,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Fast Checker* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Real-Bypass Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -173,7 +229,7 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Super Fast Binlist Scanning {count} bins...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Real-Device Fingerprint Scanning {count} bins...*", parse_mode="Markdown")
         
         length = 4 if prefix != '574' else 3
         chars = '0987654321'
@@ -188,15 +244,15 @@ def handle_interactive_steps(message):
         
         valid_records = []
         report_lines = [
-            f"=== ZENMODS FAST BINLIST HUNT REPORT ===",
+            f"=== ZENMODS REAL-DEVICE HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
         total_bins = len(generated_bins)
         completed_count = 0
         
-        # Optimized with ThreadPoolExecutor (max_workers=5 for smooth rate control)
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        # সেফ স্পিড বজায় রাখতে max_workers=4 ব্যবহার করা হয়েছে যাতে ফিংগারপ্রিন্ট সুইচিং স্মুথ থাকে
+        with ThreadPoolExecutor(max_workers=4) as executor:
             future_to_bin = {executor.submit(check_single_bin_sync, b): b for b in generated_bins}
             
             for future in as_completed(future_to_bin):
@@ -220,7 +276,7 @@ def handle_interactive_steps(message):
                 
                 try:
                     progress_text = (
-                        f"⚡ *Binlist Hunter Running...*\n"
+                        f"⚡ *Real-Device Hunter Running...*\n"
                         f"━━━━━━━━━━━━━━━━━━━\n"
                         f"📊 Checked: `{completed_count}/{total_bins}`\n"
                         f"✅ Valid Found: `{len(valid_records)}`\n"
@@ -245,7 +301,7 @@ def handle_interactive_steps(message):
                 bot.send_document(
                     message.chat.id, 
                     f, 
-                    caption=f"📊 *Zenmods Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
+                    caption=f"📊 *Zenmods Real-Device Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
                     parse_mode="Markdown"
                 )
         except Exception as e:
