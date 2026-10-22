@@ -44,51 +44,46 @@ def download_and_load_csv():
             print(f"⚠️ Error downloading CSV: {e}")
             return
 
-    print("⏳ Loading BIN database with Universal Universal Parser...")
+    print("⏳ Loading BIN database using exact column mapping...")
     temp_db = {}
     try:
         with open(CSV_FILENAME, mode="r", encoding="utf-8", errors="ignore") as f:
-            reader = csv.DictReader(f)
+            reader = csv.reader(f)
             for row in reader:
-                clean_bin = None
-                country_code = "UNKNOWN"
-                country_name = "UNKNOWN"
-                brand = "UNKNOWN"
-                b_type = "UNKNOWN"
-                issuer = "UNKNOWN"
+                if not row or len(row) < 2:
+                    continue
+                
+                # Header row filter
+                first_item = str(row[0]).strip().lower()
+                if "bin" in first_item or "iin" in first_item or not first_item.replace('.', '', 1).isdigit():
+                    continue
 
-                # Universal dynamic field extraction regardless of headers
-                for k, v in row.items():
-                    if not v: 
-                        continue
-                    v_str = str(v).strip()
-                    
-                    # Detect BIN (handles floats like 19627.0 or pure numbers)
-                    if not clean_bin and (v_str.replace('.', '', 1).isdigit() or v_str.isdigit()):
-                        num_part = v_str.split('.')[0]
-                        if len(num_part) >= 4:
-                            clean_bin = num_part.zfill(6)[:6]
-                    
-                    # Detect 2-letter Country Code (alpha_2 style, e.g., US, JP)
-                    if country_code == "UNKNOWN" and len(v_str) == 2 and v_str.isalpha() and v_str.isupper():
-                        country_code = v_str
+                # Clean BIN
+                clean_bin = first_item.split('.')[0].strip().zfill(6)[:6]
+                if not clean_bin.isdigit() or len(clean_bin) < 6:
+                    continue
 
-                # Fallback explicit checks for common header keys
-                if clean_bin:
-                    brand = row.get("brand") or row.get("Marque") or row.get("scheme") or row.get("Brand") or "UNKNOWN"
-                    b_type = row.get("type") or row.get("Type") or "UNKNOWN"
-                    issuer = row.get("issuer") or row.get("bank_name") or row.get("Emetteur") or row.get("Issuer") or "UNKNOWN"
-                    country_code = row.get("alpha_2") or row.get("country_code") or row.get("Pays") or row.get("alpha2") or country_code
-                    country_name = row.get("country") or row.get("CountryName") or "UNKNOWN"
+                # Exact mapping based on provided layout:
+                # [0]=bin, [1]=brand, [2]=type, [3]=category, [4]=issuer, [7]=alpha_2, [9]=country
+                brand = row[1].strip() if len(row) > 1 and row[1] else "UNKNOWN"
+                b_type = row[2].strip() if len(row) > 2 and row[2] else "UNKNOWN"
+                category = row[3].strip() if len(row) > 3 and row[3] else ""
+                bank = row[4].strip() if len(row) > 4 and row[4] else "UNKNOWN"
+                country_code = row[7].strip() if len(row) > 7 and row[7] else "UNKNOWN"
+                country_name = row[9].strip() if len(row) > 9 and row[9] else "UNKNOWN"
 
-                    temp_db[clean_bin] = {
-                        "bin": clean_bin,
-                        "scheme": str(brand).upper(),
-                        "type": str(b_type).upper(),
-                        "bank": str(issuer),
-                        "country_code": str(country_code).upper(),
-                        "country_name": str(country_name)
-                    }
+                full_type = b_type
+                if category and category.lower() != b_type.lower():
+                    full_type += f" ({category})"
+
+                temp_db[clean_bin] = {
+                    "bin": clean_bin,
+                    "scheme": brand.upper(),
+                    "type": full_type.upper(),
+                    "bank": bank,
+                    "country_code": country_code.upper(),
+                    "country_name": country_name
+                }
                     
         BIN_DATABASE = temp_db
         is_db_loaded = True
@@ -137,7 +132,7 @@ def send_subscription_prompt(chat_id):
 @app.route('/')
 def home():
     status = "Ready" if is_db_loaded else "Downloading/Loading Database..."
-    return f"Zenmods Universal CSV Bot is running! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
+    return f"Zenmods Bot is running! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -150,7 +145,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Universal CSV Checker* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Advanced Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -218,7 +213,7 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ *Database is still downloading/loading. Please wait a few seconds and try again.*", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, f"⚡ *Universal Hunting for {count} bins matching `{prefix}`...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Searching for {count} bins matching `{prefix}`...*", parse_mode="Markdown")
         
         valid_records = []
         seen_bins = set()
@@ -227,9 +222,7 @@ def handle_interactive_steps(message):
             if b_code.startswith(prefix):
                 cou_code = item["country_code"].upper()
                 if country and country != "ALL" and cou_code != country:
-                    # Fallback check if country matches anywhere in item values
-                    if not any(country in str(v).upper() for v in item.values()):
-                        continue
+                    continue
                 if b_code not in seen_bins:
                     seen_bins.add(b_code)
                     valid_records.append(f"Bin: {item['bin']} | Scheme: {item['scheme']} | Type: {item['type']} | Country: {cou_code} ({item['country_name']}) | Bank: {item['bank']}")
@@ -252,7 +245,7 @@ def handle_interactive_steps(message):
                     bot.send_document(
                         message.chat.id, 
                         f, 
-                        caption=f"✅ *Zenmods Universal Bins List*\nFound {len(valid_records)} unique valid bins matching prefix `{prefix}`.", 
+                        caption=f"✅ *Zenmods Valid Bins List*\nFound {len(valid_records)} unique valid bins matching prefix `{prefix}`.", 
                         parse_mode="Markdown"
                     )
             except Exception as e:
@@ -308,11 +301,11 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ *Database is still loading. Please try again in a moment.*", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Universal looking up...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Looking up in local CSV...*", parse_mode="Markdown")
         res = search_bin_locally(bin_num)
         
         if res["status"] == "VALID":
-            out = (f"✅ *Zenmods Universal Check Result*\n"
+            out = (f"✅ *Zenmods Local Check Result*\n"
                    f"━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 *Bin:* `{res['bin']}`\n"
                    f"💳 *Scheme:* `{res['scheme']}`\n"
