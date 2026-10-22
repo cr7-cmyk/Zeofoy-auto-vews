@@ -2,8 +2,8 @@ import os
 import random
 import threading
 import time
+import csv
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -19,113 +19,75 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-def generate_realistic_browser_fingerprint():
-    # বাস্তব বিভিন্ন ডিভাইসের জেনুইন ইউজার এজেন্ট এবং প্ল্যাটফর্ম পুল
-    device_profiles = [
-        {
-            "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "sec-ch-ua": "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
-            "platform": "\"Windows\""
-        },
-        {
-            "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
-            "sec-ch-ua": "\"Apple Safari\";v=\"17\", \"Not:A-Brand\";v=\"8\"",
-            "platform": "\"macOS\""
-        },
-        {
-            "ua": "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
-            "sec-ch-ua": "\"Firefox\";v=\"125\", \"Mozilla\";v=\"125\"",
-            "platform": "\"Linux\""
-        },
-        {
-            "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
-            "sec-ch-ua": "\"Mobile Safari\";v=\"17\"",
-            "platform": "\"iOS\""
-        },
-        {
-            "ua": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36",
-            "sec-ch-ua": "\"Chromium\";v=\"124\", \"Android WebView\";v=\"124\"",
-            "platform": "\"Android\""
-        }
-    ]
-    
-    profile = random.choice(device_profiles)
-    fake_ip = f"{random.randint(11, 200)}.{random.randint(1, 254)}.{random.randint(1, 254)}.{random.randint(1, 254)}"
-    
-    return {
-        "User-Agent": profile["ua"],
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": random.choice(["en-US,en;q=0.9", "en-GB,en;q=0.8,en-US;q=0.7", "ja-JP,ja;q=0.9,en;q=0.8"]),
-        "Accept-Encoding": "gzip, deflate, br",
-        "Sec-Ch-Ua": profile["sec-ch-ua"],
-        "Sec-Ch-Ua-Mobile": "?1" if "Mobile" in profile["ua"] or "Android" in profile["ua"] or "iPhone" in profile["ua"] else "?0",
-        "Sec-Ch-Ua-Platform": profile["platform"],
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-        "X-Forwarded-For": fake_ip,
-        "X-Real-IP": fake_ip,
-        "Referer": random.choice([
-            "https://www.google.com/search?q=bin+lookup",
-            "https://binlist.io/",
-            "https://duckduckgo.com/?q=card+bin+checker",
-            "https://www.bing.com/"
-        ]),
-        "Connection": "keep-alive"
-    }
+# GitHub Raw CSV Link configuration
+CSV_URL = "https://raw.githubusercontent.com/venelinkochev/bin-list-data/master/bin-list-data.csv"
+CSV_FILENAME = "bin-list-data.csv"
+BIN_DATABASE = {}
+is_db_loaded = False
 
-def check_single_bin_sync(bin_num):
-    bin6 = bin_num[:6]
-    url = f"https://binlist.io/lookup/{bin6}/"
+def download_and_load_csv():
+    global BIN_DATABASE, is_db_loaded
     
-    for attempt in range(3):
+    if not os.path.exists(CSV_FILENAME):
+        print("📥 Downloading BIN CSV file from GitHub...")
         try:
-            headers = generate_realistic_browser_fingerprint()
-            # রেন্ডম সামান্য মাইক্রো-স্লিপ যাতে ট্রাফিক দেখতে হিউম্যান ন্যাচারাল লাগে
-            time.sleep(random.uniform(0.05, 0.2))
-            
-            response = requests.get(url, headers=headers, timeout=6)
+            response = requests.get(CSV_URL, stream=True, timeout=120)
             if response.status_code == 200:
-                try:
-                    res = response.json()
-                except Exception:
-                    continue
+                with open(CSV_FILENAME, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                print("✅ CSV file downloaded successfully!")
+            else:
+                print(f"⚠️ Failed to download CSV. Status code: {response.status_code}")
+                return
+        except Exception as e:
+            print(f"⚠️ Error downloading CSV: {e}")
+            return
 
-                if res and isinstance(res, dict) and res.get("success") is True:
-                    scheme = res.get('scheme') or 'Unknown'
-                    card_type = res.get('type') or 'Unknown'
-                    category = res.get('category') or ''
-                    
-                    full_type = card_type
-                    if category and category.lower() != card_type.lower():
-                        full_type += f" ({category})"
-                        
-                    bank_info = res.get('bank') or {}
-                    bank_name = bank_info.get('name') or 'Unknown'
-                    
-                    country_info = res.get('country') or {}
-                    cou_code = country_info.get('alpha2') or 'Unknown'
-                    cou_name = country_info.get('name') or 'Unknown'
-                    
-                    return {
-                        "status": "VALID",
-                        "bin": bin_num,
-                        "scheme": scheme.upper(),
-                        "type": full_type.upper(),
-                        "bank": bank_name,
-                        "country_code": cou_code.upper(),
-                        "country_name": cou_name
+    print("⏳ Loading BIN database into memory dictionary for ultra-fast lookup...")
+    temp_db = {}
+    try:
+        with open(CSV_FILENAME, mode="r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                bin_num = row.get("BIN") or row.get("bin") or row.get("iin")
+                if bin_num:
+                    clean_bin = str(bin_num).strip().zfill(6)
+                    type_val = row.get("Type") or "UNKNOWN"
+                    cat_val = row.get("Category") or ""
+                    full_type = type_val
+                    if cat_val and cat_val.lower() != type_val.lower():
+                        full_type += f" ({cat_val})"
+
+                    temp_db[clean_bin] = {
+                        "bin": clean_bin,
+                        "scheme": row.get("Brand") or "UNKNOWN",
+                        "type": full_type,
+                        "bank": row.get("Issuer") or "UNKNOWN",
+                        "country_code": row.get("isoCode2") or "UNKNOWN",
+                        "country_name": row.get("CountryName") or "UNKNOWN"
                     }
-                elif res.get("success") is False:
-                    return {"status": "DEAD", "bin": bin_num, "reason": res.get("reason", "Not found")}
-            elif response.status_code == 429:
-                time.sleep(1 + attempt)
-        except Exception:
-            continue
-            
-    return {"status": "DEAD", "bin": bin_num, "reason": "Lookup failed / Not found"}
+        BIN_DATABASE = temp_db
+        is_db_loaded = True
+        print(f"✅ Loaded {len(BIN_DATABASE)} unique bins into memory successfully!")
+    except Exception as e:
+        print(f"⚠️ Error parsing CSV file: {e}")
+
+def search_bin_locally(bin_num):
+    bin6 = str(bin_num)[:6].zfill(6)
+    if bin6 in BIN_DATABASE:
+        data = BIN_DATABASE[bin6]
+        return {
+            "status": "VALID",
+            "bin": bin_num,
+            "scheme": data["scheme"].upper(),
+            "type": data["type"].upper(),
+            "bank": data["bank"],
+            "country_code": data["country_code"].upper(),
+            "country_name": data["country_name"]
+        }
+    return {"status": "DEAD", "bin": bin_num, "reason": "Not found in local CSV"}
 
 def is_user_subscribed(user_id):
     try:
@@ -152,7 +114,8 @@ def send_subscription_prompt(chat_id):
 
 @app.route('/')
 def home():
-    return "Zenmods Real-Fingerprint Bot is running successfully!"
+    status = "Ready" if is_db_loaded else "Downloading/Loading Database..."
+    return f"Zenmods Local CSV Bot is running successfully! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -165,7 +128,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Real-Bypass Checker* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Local CSV Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -187,7 +150,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `4147`, `52`, `37`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `4147`, `527`, `37`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -229,63 +192,33 @@ def handle_interactive_steps(message):
         
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, f"⚡ *Real-Device Fingerprint Scanning {count} bins...*", parse_mode="Markdown")
+        if not is_db_loaded:
+            bot.reply_to(message, "⏳ *Database is still downloading/loading. Please wait a few seconds and try again.*", parse_mode="Markdown")
+            return
         
-        length = 4 if prefix != '574' else 3
-        chars = '0987654321'
-        
-        generated_bins = []
-        for _ in range(count * 3):
-            us = "".join(random.choice(chars) for _ in range(length))
-            u1 = prefix + us
-            if len(u1) >= 6:
-                generated_bins.append(u1[:6])
-        generated_bins = list(set(generated_bins))[:count]
+        msg = bot.reply_to(message, f"⚡ *Instant Local Searching for {count} valid bins...*", parse_mode="Markdown")
         
         valid_records = []
         report_lines = [
-            f"=== ZENMODS REAL-DEVICE HUNT REPORT ===",
+            f"=== ZENMODS LOCAL CSV HUNT REPORT ===",
             f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
         ]
         
-        total_bins = len(generated_bins)
-        completed_count = 0
-        
-        # সেফ স্পিড বজায় রাখতে max_workers=4 ব্যবহার করা হয়েছে যাতে ফিংগারপ্রিন্ট সুইচিং স্মুথ থাকে
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_bin = {executor.submit(check_single_bin_sync, b): b for b in generated_bins}
-            
-            for future in as_completed(future_to_bin):
-                b = future_to_bin[future]
-                completed_count += 1
-                try:
-                    result = future.result()
-                except Exception:
-                    result = {"status": "DEAD", "bin": b, "reason": "Error"}
-                
-                status = result["status"]
-                if status == "VALID":
-                    cou_code = result['country_code']
-                    if country and cou_code.upper() != country:
-                        report_lines.append(f"[{completed_count}] BIN: {b} -> SUCCESS but Skipped (Country mismatch: {cou_code})")
-                    else:
-                        valid_records.append(f"Bin: {result['bin']} | Scheme: {result['scheme']} | Type: {result['type']} | Country: {cou_code} ({result['country_name']}) | Bank: {result['bank']}")
-                        report_lines.append(f"[{completed_count}] BIN: {b} -> VALID ✅ ({result['scheme']}, {result['type']}, {cou_code}, {result['bank']})")
-                else:
-                    report_lines.append(f"[{completed_count}] BIN: {b} -> DEAD ❌ ({result.get('reason', 'Not found')})")
-                
-                try:
-                    progress_text = (
-                        f"⚡ *Real-Device Hunter Running...*\n"
-                        f"━━━━━━━━━━━━━━━━━━━\n"
-                        f"📊 Checked: `{completed_count}/{total_bins}`\n"
-                        f"✅ Valid Found: `{len(valid_records)}`\n"
-                        f"━━━━━━━━━━━━━━━━━━━"
-                    )
-                    bot.edit_message_text(progress_text, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
-                except Exception:
-                    pass
-            
+        # মেমোরি ডিকশনারি থেকে ডাইরেক্ট ফিল্টারিং
+        matched_items = []
+        for b_code, item in BIN_DATABASE.items():
+            if b_code.startswith(prefix):
+                cou_code = item["country_code"].upper()
+                if country and cou_code != country:
+                    continue
+                matched_items.append(item)
+                if len(matched_items) >= count:
+                    break
+
+        for idx, item in enumerate(matched_items, 1):
+            valid_records.append(f"Bin: {item['bin']} | Scheme: {item['scheme']} | Type: {item['type']} | Country: {item['country_code']} ({item['country_name']}) | Bank: {item['bank']}")
+            report_lines.append(f"[{idx}] BIN: {item['bin']} -> VALID ✅ ({item['scheme']}, {item['type']}, {item['country_code']}, {item['bank']})")
+
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
         except Exception:
@@ -301,7 +234,7 @@ def handle_interactive_steps(message):
                 bot.send_document(
                     message.chat.id, 
                     f, 
-                    caption=f"📊 *Zenmods Real-Device Report Completed!*\nChecked {total_bins} bins, found {len(valid_records)} valid ones.", 
+                    caption=f"📊 *Zenmods Local Report Completed!*\nFound {len(valid_records)} valid bins matching prefix `{prefix}`.", 
                     parse_mode="Markdown"
                 )
         except Exception as e:
@@ -371,11 +304,15 @@ def handle_interactive_steps(message):
         bin_num = text
         del USER_STATES[user_id]
         
-        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking details...*", parse_mode="Markdown")
-        res = check_single_bin_sync(bin_num)
+        if not is_db_loaded:
+            bot.reply_to(message, "⏳ *Database is still loading. Please try again in a moment.*", parse_mode="Markdown")
+            return
+        
+        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking local database...*", parse_mode="Markdown")
+        res = search_bin_locally(bin_num)
         
         if res["status"] == "VALID":
-            out = (f"✅ *Zenmods Checker Result*\n"
+            out = (f"✅ *Zenmods Local Check Result*\n"
                    f"━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 *Bin:* `{res['bin']}`\n"
                    f"💳 *Scheme:* `{res['scheme']}`\n"
@@ -385,7 +322,7 @@ def handle_interactive_steps(message):
                    f"━━━━━━━━━━━━━━━━━━━")
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         else:
-            bot.edit_message_text(f"❌ *Invalid or dead bin:* `{bin_num}` ({res.get('reason', 'Dead')})", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Not found in local database:* `{bin_num}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['check'])
 def check_single_bin(message):
@@ -398,13 +335,18 @@ def check_single_bin(message):
             bot.reply_to(message, "Usage: `/check 527917`", parse_mode="Markdown")
             return
         bin_num = parts[1]
+        
+        if not is_db_loaded:
+            bot.reply_to(message, "⏳ *Database is still loading. Please try again in a moment.*", parse_mode="Markdown")
+            return
+            
         msg = bot.reply_to(message, "⏳ *Checking...*", parse_mode="Markdown")
-        res = check_single_bin_sync(bin_num)
+        res = search_bin_locally(bin_num)
         if res["status"] == "VALID":
             out = f"✅ Bin: {res['bin']} | Scheme: {res['scheme']} | Type: {res['type']} | Country: {res['country_code']} | Bank: {res['bank']}"
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id)
         else:
-            bot.edit_message_text(f"❌ Dead bin: {bin_num}", chat_id=message.chat.id, message_id=msg.message_id)
+            bot.edit_message_text(f"❌ Not found: {bin_num}", chat_id=message.chat.id, message_id=msg.message_id)
     except Exception as e:
         bot.reply_to(message, f"Error: {str(e)}")
 
@@ -413,6 +355,9 @@ def run_bot():
     bot.infinity_polling()
 
 if __name__ == '__main__':
+    csv_thread = threading.Thread(target=download_and_load_csv, daemon=True)
+    csv_thread.start()
+    
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
