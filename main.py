@@ -18,7 +18,7 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-# GitHub Raw CSV Link configuration (Converted properly for direct download)
+# GitHub Raw CSV Link configuration
 CSV_URL = "https://raw.githubusercontent.com/cr7-cmyk/fuck/main/master_bin_list.csv"
 CSV_FILENAME = "master_bin_list.csv"
 BIN_DATABASE = {}
@@ -44,37 +44,52 @@ def download_and_load_csv():
             print(f"⚠️ Error downloading CSV: {e}")
             return
 
-    print("⏳ Loading BIN database into memory dictionary for ultra-fast lookup...")
+    print("⏳ Loading BIN database with Universal Universal Parser...")
     temp_db = {}
     try:
         with open(CSV_FILENAME, mode="r", encoding="utf-8", errors="ignore") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Handling raw bin or float formatted bins (e.g., 19627.0)
-                raw_bin = row.get("bin") or row.get("BIN") or row.get("iin_start")
-                if raw_bin:
-                    clean_bin = str(raw_bin).split('.')[0].strip().zfill(6)
-                    
-                    brand = row.get("brand") or row.get("Marque") or row.get("scheme") or "UNKNOWN"
-                    b_type = row.get("type") or row.get("Type") or "UNKNOWN"
-                    category = row.get("category") or row.get("Niveau") or ""
-                    
-                    full_type = b_type
-                    if category and category.lower() != b_type.lower():
-                        full_type += f" ({category})"
+                clean_bin = None
+                country_code = "UNKNOWN"
+                country_name = "UNKNOWN"
+                brand = "UNKNOWN"
+                b_type = "UNKNOWN"
+                issuer = "UNKNOWN"
 
-                    issuer = row.get("issuer") or row.get("bank_name") or row.get("Emetteur") or "UNKNOWN"
-                    country_code = row.get("alpha_2") or row.get("country_code") or row.get("Pays") or "UNKNOWN"
+                # Universal dynamic field extraction regardless of headers
+                for k, v in row.items():
+                    if not v: 
+                        continue
+                    v_str = str(v).strip()
+                    
+                    # Detect BIN (handles floats like 19627.0 or pure numbers)
+                    if not clean_bin and (v_str.replace('.', '', 1).isdigit() or v_str.isdigit()):
+                        num_part = v_str.split('.')[0]
+                        if len(num_part) >= 4:
+                            clean_bin = num_part.zfill(6)[:6]
+                    
+                    # Detect 2-letter Country Code (alpha_2 style, e.g., US, JP)
+                    if country_code == "UNKNOWN" and len(v_str) == 2 and v_str.isalpha() and v_str.isupper():
+                        country_code = v_str
+
+                # Fallback explicit checks for common header keys
+                if clean_bin:
+                    brand = row.get("brand") or row.get("Marque") or row.get("scheme") or row.get("Brand") or "UNKNOWN"
+                    b_type = row.get("type") or row.get("Type") or "UNKNOWN"
+                    issuer = row.get("issuer") or row.get("bank_name") or row.get("Emetteur") or row.get("Issuer") or "UNKNOWN"
+                    country_code = row.get("alpha_2") or row.get("country_code") or row.get("Pays") or row.get("alpha2") or country_code
                     country_name = row.get("country") or row.get("CountryName") or "UNKNOWN"
 
                     temp_db[clean_bin] = {
                         "bin": clean_bin,
-                        "scheme": brand.upper(),
-                        "type": full_type.upper(),
-                        "bank": issuer,
-                        "country_code": country_code.upper(),
-                        "country_name": country_name
+                        "scheme": str(brand).upper(),
+                        "type": str(b_type).upper(),
+                        "bank": str(issuer),
+                        "country_code": str(country_code).upper(),
+                        "country_name": str(country_name)
                     }
+                    
         BIN_DATABASE = temp_db
         is_db_loaded = True
         print(f"✅ Loaded {len(BIN_DATABASE)} unique bins into memory successfully!")
@@ -122,7 +137,7 @@ def send_subscription_prompt(chat_id):
 @app.route('/')
 def home():
     status = "Ready" if is_db_loaded else "Downloading/Loading Database..."
-    return f"Zenmods Local CSV Bot is running successfully! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
+    return f"Zenmods Universal CSV Bot is running! Status: {status} (Total Bins: {len(BIN_DATABASE)})"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -135,7 +150,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Advanced Local CSV Checker* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Universal CSV Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -157,7 +172,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `4241`, `571`, `630`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `5279`, `4241`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -203,7 +218,7 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ *Database is still downloading/loading. Please wait a few seconds and try again.*", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, f"⚡ *Instant Local Searching for {count} valid bins...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, f"⚡ *Universal Hunting for {count} bins matching `{prefix}`...*", parse_mode="Markdown")
         
         valid_records = []
         seen_bins = set()
@@ -211,8 +226,10 @@ def handle_interactive_steps(message):
         for b_code, item in BIN_DATABASE.items():
             if b_code.startswith(prefix):
                 cou_code = item["country_code"].upper()
-                if country and cou_code != country:
-                    continue
+                if country and country != "ALL" and cou_code != country:
+                    # Fallback check if country matches anywhere in item values
+                    if not any(country in str(v).upper() for v in item.values()):
+                        continue
                 if b_code not in seen_bins:
                     seen_bins.add(b_code)
                     valid_records.append(f"Bin: {item['bin']} | Scheme: {item['scheme']} | Type: {item['type']} | Country: {cou_code} ({item['country_name']}) | Bank: {item['bank']}")
@@ -235,7 +252,7 @@ def handle_interactive_steps(message):
                     bot.send_document(
                         message.chat.id, 
                         f, 
-                        caption=f"✅ *Zenmods Valid Bins List*\nFound {len(valid_records)} unique valid bins matching prefix `{prefix}`.", 
+                        caption=f"✅ *Zenmods Universal Bins List*\nFound {len(valid_records)} unique valid bins matching prefix `{prefix}`.", 
                         parse_mode="Markdown"
                     )
             except Exception as e:
@@ -278,7 +295,7 @@ def handle_interactive_steps(message):
             with open(filename, "w", encoding="utf-8") as f:
                 f.write("\n".join(generated_list))
             with open(filename, "rb") as f:
-                bot.send_document(message.chat.id, f, caption=f"✅ *Zenmods Checker: Successfully generated {amount} cards!*", parse_mode="Markdown")
+                bot.send_document(message.chat.id, f, caption=f"✅ *Zenmods Generator: Successfully generated {amount} cards!*", parse_mode="Markdown")
         finally:
             if os.path.exists(filename):
                 os.remove(filename)
@@ -291,11 +308,11 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ *Database is still loading. Please try again in a moment.*", parse_mode="Markdown")
             return
         
-        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Checking local database...*", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ *Zenmods Checker: Universal looking up...*", parse_mode="Markdown")
         res = search_bin_locally(bin_num)
         
         if res["status"] == "VALID":
-            out = (f"✅ *Zenmods Local Check Result*\n"
+            out = (f"✅ *Zenmods Universal Check Result*\n"
                    f"━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 *Bin:* `{res['bin']}`\n"
                    f"💳 *Scheme:* `{res['scheme']}`\n"
@@ -305,7 +322,7 @@ def handle_interactive_steps(message):
                    f"━━━━━━━━━━━━━━━━━━━")
             bot.edit_message_text(out, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         else:
-            bot.edit_message_text(f"❌ *Not found in local database:* `{bin_num}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ *Not found in database:* `{bin_num}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['check'])
 def check_single_bin(message):
@@ -315,7 +332,7 @@ def check_single_bin(message):
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            bot.reply_to(message, "Usage: `/check 63049`", parse_mode="Markdown")
+            bot.reply_to(message, "Usage: `/check 527917`", parse_mode="Markdown")
             return
         bin_num = parts[1]
         
