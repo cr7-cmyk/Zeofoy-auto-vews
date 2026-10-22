@@ -18,8 +18,8 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-# Hugging Face Resolve CSV Link configuration (Fixed for large files)
-CSV_URL = "https://huggingface.co/datasets/mahim5445/fuck/resolve/main/master_bin_list.csv"
+# GitHub Raw CSV Link configuration (Converted properly for direct download)
+CSV_URL = "https://raw.githubusercontent.com/cr7-cmyk/fuck/main/master_bin_list.csv"
 CSV_FILENAME = "master_bin_list.csv"
 BIN_DATABASE = {}
 is_db_loaded = False
@@ -28,7 +28,7 @@ def download_and_load_csv():
     global BIN_DATABASE, is_db_loaded
     
     if not os.path.exists(CSV_FILENAME):
-        print("📥 Downloading Master BIN CSV file from Hugging Face...")
+        print("📥 Downloading Master BIN CSV file from GitHub...")
         try:
             response = requests.get(CSV_URL, stream=True, timeout=120)
             if response.status_code == 200:
@@ -36,7 +36,7 @@ def download_and_load_csv():
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
-                print("✅ CSV file downloaded successfully!")
+                print("✅ CSV file downloaded successfully from GitHub!")
             else:
                 print(f"⚠️ Failed to download CSV. Status code: {response.status_code}")
                 return
@@ -50,22 +50,30 @@ def download_and_load_csv():
         with open(CSV_FILENAME, mode="r", encoding="utf-8", errors="ignore") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                bin_num = row.get("BIN") or row.get("bin") or row.get("iin")
-                if bin_num:
-                    clean_bin = str(bin_num).strip().zfill(6)
-                    type_val = row.get("Type") or row.get("type") or "UNKNOWN"
-                    cat_val = row.get("Category") or row.get("category") or ""
-                    full_type = type_val
-                    if cat_val and cat_val.lower() != type_val.lower():
-                        full_type += f" ({cat_val})"
+                # Handling raw bin or float formatted bins (e.g., 19627.0)
+                raw_bin = row.get("bin") or row.get("BIN") or row.get("iin_start")
+                if raw_bin:
+                    clean_bin = str(raw_bin).split('.')[0].strip().zfill(6)
+                    
+                    brand = row.get("brand") or row.get("Marque") or row.get("scheme") or "UNKNOWN"
+                    b_type = row.get("type") or row.get("Type") or "UNKNOWN"
+                    category = row.get("category") or row.get("Niveau") or ""
+                    
+                    full_type = b_type
+                    if category and category.lower() != b_type.lower():
+                        full_type += f" ({category})"
+
+                    issuer = row.get("issuer") or row.get("bank_name") or row.get("Emetteur") or "UNKNOWN"
+                    country_code = row.get("alpha_2") or row.get("country_code") or row.get("Pays") or "UNKNOWN"
+                    country_name = row.get("country") or row.get("CountryName") or "UNKNOWN"
 
                     temp_db[clean_bin] = {
                         "bin": clean_bin,
-                        "scheme": row.get("Brand") or row.get("scheme") or row.get("brand") or "UNKNOWN",
-                        "type": full_type,
-                        "bank": row.get("Issuer") or row.get("bank") or row.get("issuer") or "UNKNOWN",
-                        "country_code": row.get("isoCode2") or row.get("country_code") or "UNKNOWN",
-                        "country_name": row.get("CountryName") or row.get("country_name") or "UNKNOWN"
+                        "scheme": brand.upper(),
+                        "type": full_type.upper(),
+                        "bank": issuer,
+                        "country_code": country_code.upper(),
+                        "country_name": country_name
                     }
         BIN_DATABASE = temp_db
         is_db_loaded = True
@@ -80,10 +88,10 @@ def search_bin_locally(bin_num):
         return {
             "status": "VALID",
             "bin": bin_num,
-            "scheme": data["scheme"].upper(),
-            "type": data["type"].upper(),
+            "scheme": data["scheme"],
+            "type": data["type"],
             "bank": data["bank"],
-            "country_code": data["country_code"].upper(),
+            "country_code": data["country_code"],
             "country_name": data["country_name"]
         }
     return {"status": "DEAD", "bin": bin_num, "reason": "Not found in local CSV"}
@@ -127,7 +135,7 @@ def send_welcome(message):
     markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
-        "🔥 *Welcome to Zenmods Local CSV Checker* 🔥\n\n"
+        "🔥 *Welcome to Zenmods Advanced Local CSV Checker* 🔥\n\n"
         "Use buttons or commands below:\n"
         "• `/check <bin>`\n"
         "• `/hunt <prefix> <count> <country>`\n"
@@ -149,7 +157,7 @@ def callback_inline(call):
     elif call.data == "btn_hunt":
         USER_STATES[user_id] = {"action": "hunt_prefix"}
         bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `4147`, `527`, `37`):", parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, "📥 *Hunt Setup*\n\nSend **BIN Prefix** (e.g., `4241`, `571`, `630`):", parse_mode="Markdown")
         
     elif call.data == "btn_gen":
         USER_STATES[user_id] = {"action": "gen_bin"}
@@ -307,7 +315,7 @@ def check_single_bin(message):
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            bot.reply_to(message, "Usage: `/check 527917`", parse_mode="Markdown")
+            bot.reply_to(message, "Usage: `/check 63049`", parse_mode="Markdown")
             return
         bin_num = parts[1]
         
