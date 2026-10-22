@@ -18,8 +18,8 @@ app = Flask(__name__)
 
 USER_STATES = {}
 
-# Hugging Face Raw CSV Link configuration
-CSV_URL = "https://huggingface.co/datasets/mahim5445/fuck/raw/main/master_bin_list.csv"
+# Hugging Face Resolve CSV Link configuration (Fixed for large files)
+CSV_URL = "https://huggingface.co/datasets/mahim5445/fuck/resolve/main/master_bin_list.csv"
 CSV_FILENAME = "master_bin_list.csv"
 BIN_DATABASE = {}
 is_db_loaded = False
