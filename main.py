@@ -199,50 +199,25 @@ def handle_interactive_steps(message):
         msg = bot.reply_to(message, f"⚡ *Instant Local Searching for {count} valid bins...*", parse_mode="Markdown")
         
         valid_records = []
-        report_lines = [
-            f"=== ZENMODS LOCAL CSV HUNT REPORT ===",
-            f"Prefix: {prefix} | Target Count: {count} | Filter Country: {country or 'ANY'}\n"
-        ]
+        seen_bins = set()
         
-        # মেমোরি ডিকশনারি থেকে ডাইরেক্ট ফিল্টারিং
-        matched_items = []
+        # Unique ebong duplicate-free filtering
         for b_code, item in BIN_DATABASE.items():
             if b_code.startswith(prefix):
                 cou_code = item["country_code"].upper()
                 if country and cou_code != country:
                     continue
-                matched_items.append(item)
-                if len(matched_items) >= count:
-                    break
-
-        for idx, item in enumerate(matched_items, 1):
-            valid_records.append(f"Bin: {item['bin']} | Scheme: {item['scheme']} | Type: {item['type']} | Country: {item['country_code']} ({item['country_name']}) | Bank: {item['bank']}")
-            report_lines.append(f"[{idx}] BIN: {item['bin']} -> VALID ✅ ({item['scheme']}, {item['type']}, {item['country_code']}, {item['bank']})")
+                if b_code not in seen_bins:
+                    seen_bins.add(b_code)
+                    valid_records.append(f"Bin: {item['bin']} | Scheme: {item['scheme']} | Type: {item['type']} | Country: {cou_code} ({item['country_name']}) | Bank: {item['bank']}")
+                    if len(valid_records) >= count:
+                        break
 
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
         except Exception:
             pass
 
-        rand_id = random.randint(10000, 99999)
-        report_filename = f"Zenmods_Report_{rand_id}.txt"
-        try:
-            with open(report_filename, "w", encoding="utf-8") as f:
-                f.write("\n".join(report_lines))
-            
-            with open(report_filename, "rb") as f:
-                bot.send_document(
-                    message.chat.id, 
-                    f, 
-                    caption=f"📊 *Zenmods Local Report Completed!*\nFound {len(valid_records)} valid bins matching prefix `{prefix}`.", 
-                    parse_mode="Markdown"
-                )
-        except Exception as e:
-            bot.send_message(message.chat.id, f"⚠️ Error sending report file: {e}")
-        finally:
-            if os.path.exists(report_filename):
-                os.remove(report_filename)
-            
         if valid_records:
             valid_rand_id = random.randint(10000, 99999)
             valid_filename = f"Zenmods_ValidBins_{valid_rand_id}.txt"
@@ -254,7 +229,7 @@ def handle_interactive_steps(message):
                     bot.send_document(
                         message.chat.id, 
                         f, 
-                        caption=f"✅ *Zenmods Valid Bins List*", 
+                        caption=f"✅ *Zenmods Valid Bins List*\nFound {len(valid_records)} unique valid bins matching prefix `{prefix}`.", 
                         parse_mode="Markdown"
                     )
             except Exception as e:
@@ -262,6 +237,8 @@ def handle_interactive_steps(message):
             finally:
                 if os.path.exists(valid_filename):
                     os.remove(valid_filename)
+        else:
+            bot.send_message(message.chat.id, f"❌ No valid bins found matching prefix `{prefix}` with country `{country or 'ANY'}`.")
 
     elif action == "gen_bin":
         state["bin"] = text
