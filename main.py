@@ -22,10 +22,11 @@ USER_STATES = {}
 CSV_URL = "https://media.githubusercontent.com/media/cr7-cmyk/fuck/refs/heads/main/master_bin_list.csv"
 CSV_FILENAME = "master_bin_list.csv"
 BIN_DATABASE = {}
+COUNTRY_BINS = {}
 is_db_loaded = False
 
 def download_and_load_csv():
-    global BIN_DATABASE, is_db_loaded
+    global BIN_DATABASE, COUNTRY_BINS, is_db_loaded
     
     if not os.path.exists(CSV_FILENAME):
         try:
@@ -41,6 +42,8 @@ def download_and_load_csv():
             return
 
     temp_db = {}
+    temp_country_bins = {}
+    
     try:
         with open(CSV_FILENAME, mode="r", encoding="utf-8", errors="ignore") as f:
             reader = csv.reader(f)
@@ -78,7 +81,6 @@ def download_and_load_csv():
                     if b_type == "UNKNOWN" and col_str.upper() in ["CREDIT", "DEBIT", "PREPAID"]:
                         b_type = col_str.upper()
 
-                # Positional mapping based on layout: [0]=bin, [1]=brand, [2]=type, [3]=category, [4]=issuer, [5]=phone, [6]=url, [7]=alpha_2, [9]=country
                 if len(row) > 1 and brand == "UNKNOWN" and row[1]: brand = row[1].strip().replace('"', '')
                 if len(row) > 2 and b_type == "UNKNOWN" and row[2]: b_type = row[2].strip().replace('"', '')
                 if len(row) > 3 and not category and row[3]: category = row[3].strip().replace('"', '')
@@ -100,6 +102,9 @@ def download_and_load_csv():
                     if category and category.lower() != b_type.lower():
                         full_type += f" ({category})"
 
+                    c_code = country_code.upper()
+                    c_name = country_name if country_name != "UNKNOWN" else "JAPAN" if c_code == "JP" else "UNKNOWN"
+
                     temp_db[clean_bin] = {
                         "bin": clean_bin,
                         "scheme": brand.upper(),
@@ -107,11 +112,16 @@ def download_and_load_csv():
                         "bank": bank,
                         "phone": phone if phone else "N/A",
                         "url": url if url else "N/A",
-                        "country_code": country_code.upper(),
-                        "country_name": country_name if country_name != "UNKNOWN" else "JAPAN" if country_code == "JP" else "UNKNOWN"
+                        "country_code": c_code,
+                        "country_name": c_name
                     }
                     
+                    if c_code not in temp_country_bins:
+                        temp_country_bins[c_code] = []
+                    temp_country_bins[c_code].append(clean_bin)
+                    
         BIN_DATABASE = temp_db
+        COUNTRY_BINS = temp_country_bins
         is_db_loaded = True
     except Exception:
         pass
@@ -168,7 +178,7 @@ def send_welcome(message):
 
     markup = InlineKeyboardMarkup()
     markup.row(InlineKeyboardButton("⚡ Hunt Bins", callback_data="btn_hunt"), InlineKeyboardButton("💳 Generate Cards", callback_data="btn_gen"))
-    markup.row(InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
+    markup.row(InlineKeyboardButton("🌐 Country Dump", callback_data="btn_dump"), InlineKeyboardButton("🔍 Check Bin", callback_data="btn_check"))
     
     welcome_text = (
         "🔥 *Welcome to Card Tools Bot* 🔥\n\n"
@@ -202,6 +212,14 @@ def callback_inline(call):
         USER_STATES[user_id] = {"action": "gen_bin"}
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, "📥 Send **BIN number**:", parse_mode="Markdown")
+
+    elif call.data == "btn_dump":
+        if not is_user_subscribed(user_id):
+            send_subscription_prompt(call.message.chat.id)
+            return
+        USER_STATES[user_id] = {"action": "dump_country"}
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "🌍 Send **Country Code** (e.g., `JP`, `US`, `BR`):", parse_mode="Markdown")
         
     elif call.data == "btn_check":
         if not is_user_subscribed(user_id):
@@ -228,13 +246,17 @@ def handle_interactive_steps(message):
     if action == "hunt_prefix":
         state["prefix"] = text
         state["action"] = "hunt_count"
-        bot.reply_to(message, "🔢 Send how many bins to scan (e.g., `20`, `50`):", parse_mode="Markdown")
+        bot.reply_to(message, "🔢 Send how many bins to scan (Max 1000):", parse_mode="Markdown")
         
     elif action == "hunt_count":
         if not text.isdigit():
             bot.reply_to(message, "⚠️ Please enter a valid number.")
             return
-        state["count"] = int(text)
+        count = int(text)
+        if count > 1000:
+            bot.reply_to(message, "⚠️ Maximum limit is 1000.")
+            return
+        state["count"] = count
         state["action"] = "hunt_country"
         bot.reply_to(message, "🌍 Send **Country Code** (e.g., `US`, `JP`, `BR`) or type `all`:", parse_mode="Markdown")
         
@@ -249,10 +271,9 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
         
-        # Live loading animation simulation
         msg = bot.reply_to(message, "⏳ Processing.", parse_mode="Markdown")
         for dot in ["..", "..."]:
-            time.sleep(0.4)
+            time.sleep(0.3)
             try:
                 bot.edit_message_text(f"⏳ Processing{dot}", chat_id=message.chat.id, message_id=msg.message_id)
             except Exception:
@@ -297,23 +318,94 @@ def handle_interactive_steps(message):
                 if os.path.exists(valid_filename):
                     os.remove(valid_filename)
         else:
-            bot.send_message(message.chat.id, f"❌ No bins found matching prefix `{prefix}`.")
+            bot.reply_to(message, f"❌ No bins found matching prefix `{prefix}`.")
+
+    elif action == "dump_country":
+        state["country"] = text.upper()
+        state["action"] = "dump_count"
+        bot.reply_to(message, "🔢 How many cards to dump? (Max 1000):", parse_mode="Markdown")
+
+    elif action == "dump_count":
+        if not text.isdigit():
+            bot.reply_to(message, "⚠️ Please enter a valid number.")
+            return
+        
+        amount = int(text)
+        if amount > 1000:
+            bot.reply_to(message, "⚠️ Maximum limit is 1000 cards per request.")
+            return
+
+        country_code = state.get("country")
+        del USER_STATES[user_id]
+
+        if not is_db_loaded:
+            bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
+            return
+
+        available_bins = COUNTRY_BINS.get(country_code, [])
+        if not available_bins:
+            bot.reply_to(message, f"❌ No bins found for country code `{country_code}` in database.")
+            return
+
+        msg = bot.reply_to(message, "⏳ Generating country dump.", parse_mode="Markdown")
+        for dot in ["..", "..."]:
+            time.sleep(0.3)
+            try:
+                bot.edit_message_text(f"⏳ Generating country dump{dot}", chat_id=message.chat.id, message_id=msg.message_id)
+            except Exception:
+                pass
+
+        dumped_list = []
+        for _ in range(amount):
+            chosen_bin = random.choice(available_bins)
+            target_len = 16 if not chosen_bin.startswith("3") else 15
+            rem_len = target_len - len(chosen_bin)
+            rand_digits = "".join([str(random.randint(0, 9)) for _ in range(rem_len)])
+            card_num = chosen_bin + rand_digits
+            c_month = str(random.randint(1, 12)).zfill(2)
+            c_year = str(random.randint(2027, 2032))
+            c_cvv = str(random.randint(100, 9999)) if chosen_bin.startswith("3") else str(random.randint(100, 999))
+            dumped_list.append(f"{card_num}|{c_month}|{c_year}|{c_cvv}")
+
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
+        except Exception:
+            pass
+
+        dump_rand_id = random.randint(10000, 99999)
+        filename = f"Country_Dump_{country_code}_{dump_rand_id}.txt"
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write("\n".join(dumped_list))
+            with open(filename, "rb") as f:
+                bot.send_document(
+                    message.chat.id, 
+                    f, 
+                    caption=f"✅ Country Dump Successful!\nCountry: `{country_code}`\nTotal Cards: `{amount}`", 
+                    parse_mode="Markdown"
+                )
+        finally:
+            if os.path.exists(filename):
+                os.remove(filename)
 
     elif action == "gen_bin":
         state["bin"] = text
         state["action"] = "gen_amount"
-        bot.reply_to(message, "💳 How many cards to generate? (e.g., `10` for chat, `100` for file):", parse_mode="Markdown")
+        bot.reply_to(message, "💳 How many cards to generate? (<=50 in chat, >50 as file, Max 1000):", parse_mode="Markdown")
         
     elif action == "gen_amount":
         if not text.isdigit():
             bot.reply_to(message, "⚠️ Please enter a valid number.")
             return
         
-        bin_input = state.get("bin")
         amount = int(text)
+        if amount > 1000:
+            bot.reply_to(message, "⚠️ Maximum limit is 1000 cards per request.")
+            return
+
+        bin_input = state.get("bin")
         del USER_STATES[user_id]
         
-        # Live loading animation simulation for generator
         msg = bot.reply_to(message, "⏳ Generating cards.", parse_mode="Markdown")
         for dot in ["..", "..."]:
             time.sleep(0.3)
@@ -339,7 +431,6 @@ def handle_interactive_steps(message):
         except Exception:
             pass
 
-        # Condition check: <=50 show in chat, >50 send as text file
         if amount <= 50:
             cards_text = "\n".join(generated_list)
             response_msg = f"✅ *Generated Cards ({amount}):*\n```text\n{cards_text}\n```"
@@ -364,7 +455,6 @@ def handle_interactive_steps(message):
             bot.reply_to(message, "⏳ Please wait, database is loading...", parse_mode="Markdown")
             return
         
-        # Live loading animation simulation for lookup
         msg = bot.reply_to(message, "⏳ Searching database.", parse_mode="Markdown")
         for dot in ["..", "..."]:
             time.sleep(0.3)
